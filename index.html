@@ -6,394 +6,367 @@
     <title>M.Y 靈感收納箱</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/sortablejs@1.15.0/Sortable.min.js"></script>
     <style>
-        :root {
-            --milk: #fdf8f3; --cream: #f5ece0; --latte: #e8d5bc;
-            --caramel: #c9a97a; --brown: #8b6343; --text: #3d2b1a;
-            --white: #fffefb; --shadow: rgba(139, 99, 67, 0.1);
-        }
-        body { background-color: var(--milk); color: var(--text); font-family: -apple-system, "Noto Sans TC", sans-serif; overflow-x: hidden; }
+        :root { --cream: #FFFDD0; --latte: #D2B48C; --cocoa: #6F4E37; --bg: #FDFBF7; }
+        body { background-color: var(--bg); font-family: -apple-system, "Noto Sans TC", sans-serif; color: var(--cocoa); }
+        .glass-header { backdrop-filter: blur(12px); background: rgba(253, 251, 247, 0.8); }
+        .card-shadow { box-shadow: 0 4px 20px rgba(210, 180, 140, 0.15); }
         .no-scrollbar::-webkit-scrollbar { display: none; }
-        .glass-header { backdrop-filter: blur(15px); background: rgba(253, 248, 243, 0.85); }
         
-        /* 卡片與清單樣式 */
-        .card-style { background: var(--white); border-radius: 20px; border: 1px solid var(--cream); transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); box-shadow: 0 4px 15px var(--shadow); }
-        .list-style { background: var(--white); border-radius: 16px; border: 1px solid var(--cream); display: flex; align-items: center; padding: 12px; margin-bottom: 10px; box-shadow: 0 2px 8px var(--shadow); }
-        
-        /* 拖曳動畫 */
-        .dragging { opacity: 0.5; transform: scale(0.95); }
-        .draggable-item { cursor: grab; }
-        .draggable-item:active { cursor: grabbing; }
+        /* 瀑布流 & 列表樣式 */
+        .masonry-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; transition: all 0.3s ease; }
+        .list-view { grid-template-columns: 1fr !important; gap: 12px !important; }
+        @media (min-width: 1024px) { .masonry-grid { grid-template-columns: repeat(3, 1fr); gap: 24px; } }
 
-        .btn-primary { background-color: var(--brown); color: white; border-radius: 14px; }
-        .tab-active { background-color: var(--brown) !important; color: white !important; border-color: var(--brown) !important; }
-        .tag { font-size: 10px; padding: 2px 8px; border-radius: 8px; background: var(--milk); border: 1px solid var(--cream); color: var(--brown); }
+        /* 引號裝飾 - 加入 pointer-events: none 避免擋住點擊 */
+        .quote-bg::before {
+            content: "\f10d";
+            font-family: "Font Awesome 6 Free";
+            font-weight: 900;
+            position: absolute;
+            top: 10px; left: 15px;
+            font-size: 2.5rem;
+            color: var(--latte);
+            opacity: 0.15;
+            z-index: 0;
+            pointer-events: none;
+        }
         
-        /* 模擬 Loading */
-        .loader { width: 20px; height: 20px; border: 2px solid var(--cream); border-top: 2px solid var(--brown); border-radius: 50%; animation: spin 1s linear infinite; }
-        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+        .tag-pill {
+            background: #F5EBE0;
+            color: #A67B5B;
+            padding: 2px 8px;
+            border-radius: 6px;
+            font-size: 10px;
+            margin-right: 4px;
+            margin-bottom: 4px;
+            display: inline-block;
+        }
+
+        .drop-zone.active { border: 2px dashed var(--latte); background: #FFF9F0; }
     </style>
 </head>
-<body class="pb-28">
+<body>
 
-    <!-- Header -->
     <header class="glass-header sticky top-0 z-40 border-b border-[#F5EBE0] px-4 py-4">
-        <div class="max-w-4xl mx-auto flex items-center justify-between">
+        <div class="max-w-6xl mx-auto flex items-center justify-between">
+            <h1 class="text-xl font-bold flex items-center space-x-2">
+                <span class="text-2xl">☕</span>
+                <span class="tracking-tight">M.Y 靈感收納箱</span>
+            </h1>
             <div class="flex items-center space-x-2">
-                <span class="text-2xl">🧸</span>
-                <h1 class="text-lg font-bold tracking-tight">M.Y 靈感收納箱</h1>
-            </div>
-            <div class="flex space-x-3">
-                <button onclick="toggleView()" class="w-9 h-9 rounded-full bg-white border border-cream text-brown flex items-center justify-center shadow-sm">
-                    <i id="viewIcon" class="fas fa-th-large"></i>
+                <!-- 視角切換按鈕 -->
+                <button onclick="toggleViewMode()" id="viewModeBtn" class="w-9 h-9 rounded-full bg-white border border-[#F5EBE0] text-[#A67B5B] flex items-center justify-center shadow-sm mr-2">
+                    <i class="fas fa-th-large"></i>
                 </button>
-                <button onclick="openSync()" class="w-9 h-9 rounded-full bg-white border border-cream text-brown flex items-center justify-center shadow-sm">
-                    <i class="fas fa-sync-alt"></i>
+                <button onclick="exportData()" class="w-9 h-9 rounded-full bg-white border border-[#F5EBE0] text-[#A67B5B] flex items-center justify-center shadow-sm">
+                    <i class="fas fa-cloud-download-alt"></i>
                 </button>
-                <button onclick="openSettings()" class="w-9 h-9 rounded-full bg-white border border-cream text-brown flex items-center justify-center shadow-sm">
-                    <i class="fas fa-sliders-h"></i>
+                <button onclick="importData()" class="w-9 h-9 rounded-full bg-white border border-[#F5EBE0] text-[#A67B5B] flex items-center justify-center shadow-sm">
+                    <i class="fas fa-file-import"></i>
+                </button>
+                <button onclick="toggleSettings()" class="w-9 h-9 rounded-full bg-white border border-[#F5EBE0] text-[#A67B5B] flex items-center justify-center shadow-sm">
+                    <i class="fas fa-cog"></i>
                 </button>
             </div>
         </div>
     </header>
 
-    <main class="max-w-4xl mx-auto px-4 py-6">
-        <!-- Search -->
+    <main class="max-w-6xl mx-auto px-4 py-6 pb-32">
         <div class="relative mb-6">
-            <i class="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-caramel opacity-60"></i>
-            <input type="text" id="searchInput" oninput="renderItems()" placeholder="搜尋靈感內容、#標籤..." 
-                class="w-full pl-11 pr-4 py-3.5 bg-white border border-cream rounded-2xl shadow-sm focus:outline-none focus:ring-2 focus:ring-latte/50">
+            <i class="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-[#D2B48C]"></i>
+            <input type="text" id="searchInput" oninput="renderItems()" placeholder="搜尋靈感或標籤..." class="w-full pl-11 pr-4 py-3 bg-white border border-[#F5EBE0] rounded-2xl shadow-sm focus:outline-none focus:ring-2 focus:ring-[#D2B48C]">
         </div>
 
-        <!-- Categories (Draggable) -->
-        <div id="tabsContainer" class="flex space-x-2 overflow-x-auto no-scrollbar pb-4">
-            <!-- JS Render -->
-        </div>
+        <div id="tabsContainer" class="flex space-x-2 overflow-x-auto no-scrollbar mb-8 pb-1"></div>
 
-        <!-- Grid/List Container -->
-        <div id="itemsContainer" class="grid grid-cols-2 gap-3 md:gap-5">
-            <!-- JS Render -->
+        <div id="itemsGrid" class="masonry-grid">
+            <!-- 由 JS 渲染 -->
         </div>
     </main>
 
-    <!-- Floating Add -->
-    <button onclick="showAdd()" class="fixed bottom-10 right-6 w-14 h-14 btn-primary shadow-lg flex items-center justify-center text-xl z-50">
-        <i class="fas fa-feather-alt"></i>
+    <button onclick="showAddModal()" class="fixed bottom-8 right-6 w-14 h-14 bg-[#A67B5B] text-white rounded-full shadow-lg flex items-center justify-center text-2xl z-50 hover:scale-105 transition-transform">
+        <i class="fas fa-plus"></i>
     </button>
 
-    <!-- Modal: 新增靈感 -->
-    <div id="addModal" class="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/40 hidden backdrop-blur-sm p-4">
-        <div class="bg-white w-full max-w-lg rounded-[32px] p-6 shadow-2xl overflow-y-auto max-h-[85vh]">
-            <div class="flex justify-between items-center mb-6">
-                <h2 class="text-xl font-bold">✨ 捕捉新靈感</h2>
-                <button onclick="hideAdd()" class="text-gray-300"><i class="fas fa-times text-xl"></i></button>
-            </div>
+    <!-- 新增靈感 Modal -->
+    <div id="addModal" class="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/40 hidden backdrop-blur-sm">
+        <div class="bg-white w-full max-w-md rounded-[32px] p-6 shadow-2xl overflow-y-auto max-h-[90vh]">
+            <h2 class="text-xl font-bold mb-6 flex items-center">✨ 新增靈感</h2>
             
-            <form onsubmit="saveNewItem(event)" class="space-y-4">
-                <div class="space-y-1">
-                    <label class="text-[11px] font-bold text-brown ml-1 uppercase opacity-60">連結 (自動抓取)</label>
-                    <div class="relative">
-                        <input name="url" id="urlInput" onblur="autoFetch(this.value)" type="url" placeholder="貼上 IG 或 Threads 連結" class="w-full px-4 py-3.5 bg-milk border border-cream rounded-2xl focus:outline-none focus:border-caramel transition-colors">
-                        <div id="urlLoader" class="absolute right-4 top-1/2 -translate-y-1/2 hidden"><div class="loader"></div></div>
+            <div class="space-y-4">
+                <div id="imageDropZone" class="drop-zone w-full h-40 border-2 border-dashed border-[#F5EBE0] rounded-2xl flex flex-col items-center justify-center bg-[#FAF7F2] overflow-hidden relative group">
+                    <div id="previewContainer" class="hidden absolute inset-0 bg-white">
+                        <img id="imgPreview" class="w-full h-full object-cover">
+                        <button onclick="clearImage()" class="absolute top-2 right-2 bg-black/50 text-white w-6 h-6 rounded-full text-xs">✕</button>
                     </div>
+                    <i class="fas fa-image text-3xl text-[#D2B48C] mb-2"></i>
+                    <p class="text-xs text-[#8B7355]">點擊上傳或「直接貼上截圖」</p>
+                    <input type="file" id="fileInput" accept="image/*" class="absolute inset-0 opacity-0 cursor-pointer">
                 </div>
 
-                <div class="space-y-1">
-                    <label class="text-[11px] font-bold text-brown ml-1 uppercase opacity-60">封面預覽</label>
-                    <div id="dropZone" onclick="document.getElementById('fileInput').click()" class="w-full h-36 border-2 border-dashed border-cream rounded-2xl bg-milk flex items-center justify-center cursor-pointer overflow-hidden relative">
-                        <div id="previewText" class="text-caramel text-sm flex flex-col items-center"><i class="fas fa-cloud-upload-alt text-2xl mb-2"></i>點擊或貼上圖片</div>
-                        <img id="imagePreview" class="hidden h-full w-full object-cover">
-                        <button type="button" id="clearImgBtn" onclick="clearImage(event)" class="hidden absolute top-2 right-2 w-7 h-7 bg-white/80 rounded-full text-xs text-red-400 border border-red-50">✕</button>
-                    </div>
-                    <input type="file" id="fileInput" accept="image/*" class="hidden" onchange="handleFile(this.files[0])">
-                    <input type="hidden" name="imageData" id="imageData">
+                <div class="flex space-x-2">
+                    <input id="addTitle" placeholder="給這個靈感一個標題..." class="flex-1 px-4 py-3 bg-[#FAF7F2] border border-[#F5EBE0] rounded-xl focus:outline-none">
+                    <button onclick="aiSuggestTags()" class="px-3 bg-[#FDFBF7] border border-[#D2B48C] text-[#A67B5B] rounded-xl text-xs font-bold">✨ AI 幫貼標籤</button>
                 </div>
 
-                <div class="space-y-1">
-                    <label class="text-[11px] font-bold text-brown ml-1 uppercase opacity-60">標題與筆記</label>
-                    <input name="title" id="titleInput" required placeholder="給這個靈感一個標題" class="w-full px-4 py-3.5 bg-milk border border-cream rounded-2xl mb-2 focus:outline-none">
-                    <textarea name="note" id="noteInput" rows="2" placeholder="寫點什麼筆記..." class="w-full px-4 py-3.5 bg-milk border border-cream rounded-2xl focus:outline-none"></textarea>
-                </div>
+                <input id="addTags" placeholder="標籤 (例如: #甜點 #食譜)" class="w-full px-4 py-3 bg-[#FAF7F2] border border-[#F5EBE0] rounded-xl focus:outline-none text-sm">
+                
+                <input id="addUrl" placeholder="連結 (可留空)" class="w-full px-4 py-3 bg-[#FAF7F2] border border-[#F5EBE0] rounded-xl focus:outline-none text-sm">
 
-                <div class="grid grid-cols-2 gap-3">
-                    <div class="space-y-1">
-                        <label class="text-[11px] font-bold text-brown ml-1 uppercase opacity-60">存放位置</label>
-                        <select name="categoryId" id="catSelect" class="w-full px-3 py-3.5 bg-milk border border-cream rounded-2xl focus:outline-none"></select>
-                    </div>
-                    <div class="space-y-1">
-                        <label class="text-[11px] font-bold text-brown ml-1 uppercase opacity-60 flex justify-between">
-                            標籤 <span onclick="autoTags()" class="cursor-pointer text-blue-400">✨ AI 幫貼</span>
-                        </label>
-                        <input name="tags" id="tagsInput" placeholder="美食, 探店" class="w-full px-3 py-3.5 bg-milk border border-cream rounded-2xl focus:outline-none text-sm">
-                    </div>
-                </div>
+                <select id="addCategory" class="w-full px-4 py-3 bg-[#FAF7F2] border border-[#F5EBE0] rounded-xl focus:outline-none"></select>
+                
+                <textarea id="addNote" rows="2" placeholder="寫下妳的隨手筆記..." class="w-full px-4 py-3 bg-[#FAF7F2] border border-[#F5EBE0] rounded-xl focus:outline-none text-sm"></textarea>
 
-                <button type="submit" class="w-full py-4 btn-primary font-bold shadow-lg mt-4 text-lg">確認收藏</button>
-            </form>
+                <div class="flex space-x-3 pt-2">
+                    <button onclick="hideAddModal()" class="flex-1 py-3 text-[#8B7355] font-medium">取消</button>
+                    <button onclick="saveItem()" class="flex-1 py-3 bg-[#A67B5B] text-white font-bold rounded-2xl shadow-md">儲存靈感</button>
+                </div>
+            </div>
         </div>
     </div>
 
-    <!-- Modal: 代號同步 -->
-    <div id="syncModal" class="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/40 hidden backdrop-blur-sm p-4">
-        <div class="bg-white w-full max-w-sm rounded-[32px] p-8 shadow-2xl text-center">
-            <div class="w-16 h-16 bg-milk rounded-full flex items-center justify-center mx-auto mb-4 border border-cream text-caramel text-2xl">
-                <i class="fas fa-fingerprint"></i>
-            </div>
-            <h2 class="text-xl font-bold mb-2">專屬同步代號</h2>
-            <p class="text-xs text-brown opacity-60 mb-6 leading-relaxed">設定一個妳記得住的代號（例如：MY2024），<br>在任何裝置輸入此代號即可登入同步。</p>
-            
-            <input type="text" id="syncIdInput" placeholder="輸入妳的專屬代號" class="w-full px-4 py-4 bg-milk border border-cream rounded-2xl mb-4 text-center font-bold tracking-widest uppercase focus:outline-none focus:border-brown transition-all">
-            
-            <div class="grid grid-cols-2 gap-3">
-                <button onclick="handleSync('save')" class="py-3.5 btn-primary text-sm font-bold shadow-md">保存至雲端</button>
-                <button onclick="handleSync('load')" class="py-3.5 bg-milk text-brown border border-cream rounded-xl text-sm font-bold">載入同步</button>
-            </div>
-            <button onclick="closeSync()" class="mt-6 text-xs text-gray-400 font-medium underline underline-offset-4">暫不設定</button>
-        </div>
-    </div>
-
-    <!-- Modal: 管理與拖曳排序 -->
-    <div id="settingsModal" class="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/40 hidden backdrop-blur-sm p-4">
-        <div class="bg-white w-full max-w-md rounded-[32px] p-6 shadow-2xl">
+    <!-- 管理分類 Modal -->
+    <div id="settingsModal" class="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/40 hidden backdrop-blur-sm">
+        <div class="bg-white w-full max-w-sm rounded-[32px] p-6 shadow-2xl">
             <div class="flex justify-between items-center mb-6">
-                <h2 class="text-xl font-bold">自訂分類排序</h2>
-                <button onclick="addCategory()" class="text-sm font-bold text-brown">+ 新增</button>
+                <h2 class="text-lg font-bold">自訂分類排序</h2>
+                <button onclick="addCategoryPrompt()" class="text-[#A67B5B] text-sm">+ 新增</button>
             </div>
-            <p class="text-[10px] text-gray-400 mb-4 italic"><i class="fas fa-info-circle mr-1"></i>小技巧：直接上下拖曳分類即可調整順序喔！</p>
-            <div id="settingsList" class="space-y-2 max-h-80 overflow-y-auto pr-1">
-                <!-- JS Render Sortable -->
-            </div>
-            <button onclick="closeSettings()" class="w-full py-4 btn-primary font-bold mt-6 shadow-lg">儲存順序</button>
+            <div id="categoryOrderList" class="space-y-2 mb-6 max-h-80 overflow-y-auto pr-1"></div>
+            <button onclick="toggleSettings()" class="w-full py-3 bg-[#A67B5B] text-white font-bold rounded-2xl">完成</button>
         </div>
     </div>
 
     <script>
         let state = {
-            viewMode: 'grid', // grid or list
             categories: [
-                { id: 'all', name: '全部靈感', emoji: '🌟' },
-                { id: 'handmade', name: '手作靈感', emoji: '🎨' },
-                { id: 'travel', name: '旅遊相關', emoji: '✈️' },
-                { id: 'recommend', name: '推薦小物', emoji: '🛒' },
-                { id: 'book', name: '書籍收藏', emoji: '📚' },
-                { id: 'foodmap', name: '美食地圖', emoji: '📍' }
+                { id: 'cat_1', name: '生活靈感', emoji: '💡' },
+                { id: 'cat_2', name: '食譜料理', emoji: '🍳' },
+                { id: 'cat_3', name: '育兒親子', emoji: '👶🏻' },
+                { id: 'cat_4', name: '手作靈感', emoji: '🧶' },
+                { id: 'cat_5', name: '旅遊相關', emoji: '✈️' },
+                { id: 'cat_6', name: '網友推薦', emoji: '🛍️' },
+                { id: 'cat_7', name: '書籍收藏', emoji: '📚' },
+                { id: 'cat_8', name: '美食地圖', emoji: '🍰' }
             ],
             items: [],
-            activeTab: 'all'
+            activeTab: 'all',
+            viewMode: 'grid', // 'grid' or 'list'
+            tempImage: null
         };
 
-        const STORAGE_KEY = 'my_insp_v4';
-
-        function load() {
-            const data = localStorage.getItem(STORAGE_KEY);
-            if (data) state = JSON.parse(data);
+        function init() {
+            const saved = localStorage.getItem('my_pocket_pro_v2');
+            if (saved) state = JSON.parse(saved);
             renderAll();
+            setupPasteListener();
         }
 
-        function save() {
-            localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-            renderAll();
+        function saveData() {
+            localStorage.setItem('my_pocket_pro_v2', JSON.stringify(state));
         }
 
         function renderAll() {
             renderTabs();
             renderItems();
-            updateSelect();
+            updateCategorySelect();
+            saveData();
         }
 
-        // 佈局切換
-        function toggleView() {
+        function toggleViewMode() {
             state.viewMode = state.viewMode === 'grid' ? 'list' : 'grid';
-            document.getElementById('viewIcon').className = state.viewMode === 'grid' ? 'fas fa-th-large' : 'fas fa-list';
-            save();
+            const btn = document.getElementById('viewModeBtn');
+            btn.innerHTML = state.viewMode === 'grid' ? '<i class="fas fa-th-large"></i>' : '<i class="fas fa-list"></i>';
+            renderItems();
         }
 
         function renderTabs() {
             const container = document.getElementById('tabsContainer');
-            container.innerHTML = state.categories.map(cat => `
-                <button onclick="setTab('${cat.id}')" 
-                    class="flex-shrink-0 px-5 py-2.5 rounded-full border transition-all text-sm whitespace-nowrap ${state.activeTab === cat.id ? 'tab-active shadow-md' : 'bg-white text-brown border-cream'}">
-                    <span>${cat.emoji}</span> <span class="ml-1 font-medium">${cat.name}</span>
-                </button>
-            `).join('');
+            let html = `<button onclick="setTab('all')" class="flex-shrink-0 px-5 py-2 rounded-full border transition-all ${state.activeTab === 'all' ? 'bg-[#A67B5B] text-white border-[#A67B5B]' : 'bg-white text-[#6F4E37] border-[#D2B48C]'} shadow-sm">🌟 全部</button>`;
+            state.categories.forEach(cat => {
+                html += `<button onclick="setTab('${cat.id}')" class="flex-shrink-0 px-5 py-2 rounded-full border transition-all ${state.activeTab === cat.id ? 'bg-[#A67B5B] text-white border-[#A67B5B]' : 'bg-white text-[#6F4E37] border-[#D2B48C]'} shadow-sm">${cat.emoji} ${cat.name}</button>`;
+            });
+            container.innerHTML = html;
         }
 
         function renderItems() {
-            const container = document.getElementById('itemsContainer');
+            const grid = document.getElementById('itemsGrid');
             const search = document.getElementById('searchInput').value.toLowerCase();
-            let filtered = state.activeTab === 'all' ? state.items : state.items.filter(i => i.categoryId === state.activeTab);
             
+            if (state.viewMode === 'list') grid.classList.add('list-view');
+            else grid.classList.remove('list-view');
+
+            let filtered = state.activeTab === 'all' ? state.items : state.items.filter(i => i.catId === state.activeTab);
             if (search) {
-                filtered = filtered.filter(i => 
-                    i.title.toLowerCase().includes(search) || 
-                    i.note.toLowerCase().includes(search) || 
-                    (i.tags && i.tags.toLowerCase().includes(search))
-                );
+                filtered = filtered.filter(i => i.title.toLowerCase().includes(search) || i.tags.toLowerCase().includes(search));
             }
 
-            if (state.viewMode === 'grid') {
-                container.className = "grid grid-cols-2 gap-3 md:gap-5";
-                container.innerHTML = filtered.map(item => `
-                    <div class="card-style overflow-hidden flex flex-col relative group">
-                        <button onclick="deleteItem('${item.id}')" class="absolute top-2 right-2 w-6 h-6 bg-white/90 rounded-full text-red-300 text-[10px] flex items-center justify-center z-10 opacity-0 group-hover:opacity-100 transition-opacity"><i class="fas fa-trash"></i></button>
-                        <div class="aspect-square bg-milk flex items-center justify-center overflow-hidden">
-                            ${item.image ? `<img src="${item.image}" class="w-full h-full object-cover">` : `<i class="far fa-image text-3xl text-latte"></i>`}
-                        </div>
-                        <div class="p-3 flex-1 flex flex-col">
-                            <h3 class="text-xs font-bold text-text mb-1 line-clamp-2 leading-snug">${item.title}</h3>
-                            <div class="flex flex-wrap gap-1 mb-2">
-                                ${(item.tags || '').split(',').filter(t => t.trim()).map(t => `<span class="tag">#${t.trim()}</span>`).join('')}
+            grid.innerHTML = filtered.map(item => {
+                const category = state.categories.find(c => c.id === item.catId);
+                const tagList = item.tags ? item.tags.split(' ').map(t => `<span class="tag-pill">${t.startsWith('#') ? t : '#'+t}</span>`).join('') : '';
+                
+                return `
+                <div class="bg-white rounded-[24px] overflow-hidden border border-[#F5EBE0] card-shadow flex ${state.viewMode === 'list' ? 'flex-row h-32' : 'flex-col'} group relative quote-bg">
+                    <!-- 修正刪除按鈕層級 z-20 -->
+                    <button onclick="deleteItem('${item.id}')" class="absolute top-2 right-2 w-7 h-7 bg-white/90 backdrop-blur rounded-full text-red-400 opacity-0 group-hover:opacity-100 transition-opacity z-20 flex items-center justify-center shadow-sm">
+                        <i class="fas fa-trash-alt text-xs"></i>
+                    </button>
+                    
+                    <!-- 圖片區 -->
+                    <div class="${state.viewMode === 'list' ? 'w-32 h-full' : 'w-full aspect-[4/5]'} bg-[#FAF7F2] overflow-hidden">
+                        ${item.image ? `<img src="${item.image}" class="w-full h-full object-cover">` : `<div class="w-full h-full flex items-center justify-center text-3xl opacity-20">${category?.emoji || '📝'}</div>`}
+                    </div>
+
+                    <!-- 內容區 -->
+                    <div class="p-4 flex-1 flex flex-col justify-between relative z-10">
+                        <div>
+                            <div class="flex items-center text-[10px] text-[#A67B5B] mb-1 font-bold">
+                                <span>${category?.emoji} ${category?.name}</span>
                             </div>
-                            <a href="${item.url}" target="_blank" class="mt-auto block w-full py-1.5 text-center rounded-lg bg-milk border border-cream text-brown text-[10px] font-bold">查看原文</a>
+                            <h3 class="font-bold text-sm text-[#4A3728] line-clamp-2 mb-1">${item.title}</h3>
+                            <div class="mt-1">${tagList}</div>
                         </div>
-                    </div>`).join('');
-            } else {
-                container.className = "flex flex-col space-y-2";
-                container.innerHTML = filtered.map(item => `
-                    <div class="list-style group">
-                        <div class="w-14 h-14 rounded-xl bg-milk flex-shrink-0 mr-4 overflow-hidden border border-cream">
-                            ${item.image ? `<img src="${item.image}" class="w-full h-full object-cover">` : `<i class="far fa-image text-latte flex items-center justify-center h-full"></i>`}
+                        
+                        <div class="flex items-center justify-between mt-2">
+                            <span class="text-[10px] text-[#BDB2A7]">${new Date(item.id*1).toLocaleDateString()}</span>
+                            <a href="${item.url}" target="_blank" class="px-4 py-1.5 bg-[#FAF7F2] border border-[#F5EBE0] rounded-full text-[#A67B5B] text-[10px] font-bold hover:bg-[#F5EBE0]">
+                                <i class="fas fa-link mr-1"></i> 前往原文
+                            </a>
                         </div>
-                        <div class="flex-1 min-w-0 pr-2">
-                            <h3 class="text-sm font-bold text-text truncate mb-1">${item.title}</h3>
-                            <div class="flex gap-2">
-                                <span class="text-[10px] text-brown/60 truncate">${item.note || '無筆記'}</span>
-                            </div>
-                        </div>
-                        <div class="flex items-center space-x-2">
-                            <a href="${item.url}" target="_blank" class="w-8 h-8 rounded-full bg-milk border border-cream flex items-center justify-center text-brown text-xs"><i class="fas fa-link"></i></a>
-                            <button onclick="deleteItem('${item.id}')" class="w-8 h-8 rounded-full bg-red-50 text-red-300 text-xs opacity-0 group-hover:opacity-100 transition-opacity"><i class="fas fa-trash"></i></button>
-                        </div>
-                    </div>`).join('');
+                    </div>
+                </div>
+            `}).join('');
+        }
+
+        // AI 標籤助理優化
+        window.aiSuggestTags = () => {
+            const title = document.getElementById('addTitle').value;
+            const tagInput = document.getElementById('addTags');
+            if (!title) return alert("請先輸入標題唷！");
+            
+            const keywords = {
+                '食譜': ['#懶人料理', '#手作便當', '#美食'],
+                '育兒': ['#育兒好物', '#寶寶成長', '#媽媽日常'],
+                '靈感': ['#日系美學', '#生活雜記'],
+                '甜點': ['#下午茶', '#烘焙', '#甜點控']
+            };
+            
+            let tags = ["#靈感"];
+            for (let k in keywords) {
+                if (title.includes(k)) tags = [...tags, ...keywords[k]];
             }
+            
+            tagInput.value = tags.join(" ");
+            tagInput.focus();
+        };
+
+        function setupPasteListener() {
+            window.addEventListener('paste', (e) => {
+                if (!document.getElementById('addModal').classList.contains('hidden')) {
+                    const items = e.clipboardData.items;
+                    for (let i = 0; i < items.length; i++) {
+                        if (items[i].type.indexOf('image') !== -1) processImage(items[i].getAsFile());
+                    }
+                }
+            });
+            document.getElementById('fileInput').onchange = (e) => { if (e.target.files[0]) processImage(e.target.files[0]); };
         }
 
-        // 自動資訊抓取 (模擬)
-        function autoFetch(url) {
-            if(!url) return;
-            const loader = document.getElementById('urlLoader');
-            loader.classList.remove('hidden');
-            setTimeout(() => {
-                const domain = new URL(url).hostname.split('.')[1] || 'Web';
-                document.getElementById('titleInput').value = `${domain.toUpperCase()} 的精彩分享`;
-                loader.classList.add('hidden');
-            }, 800);
-        }
-
-        // AI 標籤 (模擬)
-        function autoTags() {
-            const title = document.getElementById('titleInput').value;
-            const mapping = { '食譜': '料理, 晚餐', '手作': 'DIY, 創意', '旅遊': '景點, 拍照', '育兒': '寶寶, 親子' };
-            let result = "生活";
-            for(let k in mapping) if(title.includes(k)) result = mapping[k];
-            document.getElementById('tagsInput').value = result;
-        }
-
-        // 圖片處理
-        function handleFile(file) {
-            if (!file) return;
+        function processImage(file) {
             const reader = new FileReader();
             reader.onload = (e) => {
-                document.getElementById('imageData').value = e.target.result;
-                document.getElementById('imagePreview').src = e.target.result;
-                document.getElementById('imagePreview').classList.remove('hidden');
-                document.getElementById('previewText').classList.add('hidden');
-                document.getElementById('clearImgBtn').classList.remove('hidden');
+                const img = new Image();
+                img.onload = () => {
+                    const canvas = document.createElement('canvas');
+                    let w = img.width, h = img.height, max = 800;
+                    if (w > h && w > max) { h *= max/w; w = max; }
+                    else if (h > max) { w *= max/h; h = max; }
+                    canvas.width = w; canvas.height = h;
+                    canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+                    state.tempImage = canvas.toDataURL('image/jpeg', 0.7);
+                    document.getElementById('imgPreview').src = state.tempImage;
+                    document.getElementById('previewContainer').classList.remove('hidden');
+                };
+                img.src = e.target.result;
             };
             reader.readAsDataURL(file);
         }
 
-        function clearImage(e) {
-            e.stopPropagation();
-            document.getElementById('imageData').value = '';
-            document.getElementById('imagePreview').src = '';
-            document.getElementById('imagePreview').classList.add('hidden');
-            document.getElementById('previewText').classList.remove('hidden');
-            document.getElementById('clearImgBtn').classList.add('hidden');
-        }
-
-        // 監聽貼上
-        document.addEventListener('paste', e => {
-            const items = e.clipboardData.items;
-            for (let i = 0; i < items.length; i++) {
-                if (items[i].type.indexOf('image') !== -1) handleFile(items[i].getAsFile());
-            }
-        });
-
-        // 拖曳排序邏輯 (使用原生 DragDrop)
-        let draggedIdx = null;
-        function renderSettings() {
-            const list = document.getElementById('settingsList');
-            list.innerHTML = state.categories.map((cat, idx) => `
-                <div draggable="true" ondragstart="dragStart(${idx})" ondragover="dragOver(event, ${idx})" ondragend="dragEnd()"
-                    class="draggable-item flex items-center space-x-3 bg-milk p-4 rounded-2xl border border-cream transition-all hover:border-latte ${cat.id === 'all' ? 'opacity-50 pointer-events-none' : ''}">
-                    <i class="fas fa-bars text-latte text-xs"></i>
-                    <span class="text-sm">${cat.emoji}</span>
-                    <input type="text" value="${cat.name}" onchange="updateCat(${idx}, 'name', this.value)" class="flex-1 bg-transparent border-none text-sm font-medium focus:ring-0">
-                    <button onclick="removeCat(${idx})" class="text-red-200 hover:text-red-400"><i class="fas fa-minus-circle"></i></button>
-                </div>
-            `).join('');
-        }
-
-        window.dragStart = (idx) => { draggedIdx = idx; event.target.classList.add('dragging'); };
-        window.dragEnd = () => { draggedIdx = null; document.querySelectorAll('.draggable-item').forEach(i => i.classList.remove('dragging')); };
-        window.dragOver = (e, idx) => {
-            e.preventDefault();
-            if (draggedIdx === idx || state.categories[idx].id === 'all') return;
-            const arr = [...state.categories];
-            const draggedItem = arr.splice(draggedIdx, 1)[0];
-            arr.splice(idx, 0, draggedItem);
-            state.categories = arr;
-            draggedIdx = idx;
-            renderSettings();
+        window.saveItem = () => {
+            const title = document.getElementById('addTitle').value;
+            if (!title) return alert("標題不能空白唷！");
+            state.items.unshift({
+                id: Date.now().toString(),
+                title: title,
+                tags: document.getElementById('addTags').value,
+                url: document.getElementById('addUrl').value || '#',
+                catId: document.getElementById('addCategory').value,
+                note: document.getElementById('addNote').value,
+                image: state.tempImage
+            });
+            hideAddModal();
+            renderAll();
         };
 
-        // 代號同步邏輯 (模擬雲端)
-        function handleSync(mode) {
-            const id = document.getElementById('syncIdInput').value.trim().toUpperCase();
-            if (!id) return alert('請先輸入代號喔！');
-            
-            if (mode === 'save') {
-                const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(state))));
-                localStorage.setItem(`cloud_sync_${id}`, encoded);
-                alert(`資料已成功綁定至代號 [${id}]\n妳可以在其他裝置輸入此代號載入資料。`);
-            } else {
-                const remoteData = localStorage.getItem(`cloud_sync_${id}`);
-                if (remoteData) {
-                    if (confirm(`找到代號 [${id}] 的資料，是否要載入並覆蓋此裝置內容？`)) {
-                        state = JSON.parse(decodeURIComponent(escape(atob(remoteData))));
-                        save();
-                        location.reload();
-                    }
-                } else {
-                    alert('找不到這個代號的資料喔，請確認代號是否正確。');
-                }
-            }
-        }
-
-        // 基礎功能
+        // 其它功能
         window.setTab = (id) => { state.activeTab = id; renderAll(); };
-        window.showAdd = () => document.getElementById('addModal').classList.remove('hidden');
-        window.hideAdd = () => { document.getElementById('addModal').classList.add('hidden'); };
-        window.saveNewItem = (e) => {
-            e.preventDefault();
-            const fd = new FormData(e.target);
-            state.items.unshift({ id: Date.now().toString(), title: fd.get('title'), url: fd.get('url'), categoryId: fd.get('categoryId'), note: fd.get('note'), image: fd.get('imageData'), tags: fd.get('tags') });
-            save(); e.target.reset(); clearImage(e); hideAdd();
+        window.showAddModal = () => document.getElementById('addModal').classList.remove('hidden');
+        window.hideAddModal = () => { 
+            document.getElementById('addModal').classList.add('hidden'); 
+            clearImage(); 
+            ['addTitle', 'addTags', 'addUrl', 'addNote'].forEach(id => document.getElementById(id).value = '');
         };
-        window.deleteItem = (id) => { if(confirm('要刪除這份靈感嗎？')) { state.items = state.items.filter(i => i.id !== id); save(); } };
-        window.openSettings = () => { document.getElementById('settingsModal').classList.remove('hidden'); renderSettings(); };
-        window.closeSettings = () => { save(); document.getElementById('settingsModal').classList.add('hidden'); };
-        window.addCategory = () => { state.categories.push({ id: 'c'+Date.now(), name: '新分類', emoji: '📂' }); renderSettings(); };
-        window.removeCat = (idx) => { state.categories.splice(idx, 1); renderSettings(); };
-        window.updateCat = (idx, k, v) => { state.categories[idx][k] = v; };
-        window.openSync = () => document.getElementById('syncModal').classList.remove('hidden');
-        window.closeSync = () => document.getElementById('syncModal').classList.add('hidden');
-        function updateSelect() {
-            document.getElementById('catSelect').innerHTML = state.categories.filter(c => c.id !== 'all').map(c => `<option value="${c.id}">${c.emoji} ${c.name}</option>`).join('');
-        }
+        window.clearImage = () => { state.tempImage = null; document.getElementById('previewContainer').classList.add('hidden'); };
+        
+        // 刪除函數優化：確保重新渲染
+        window.deleteItem = (id) => { 
+            if(confirm('要刪除這筆靈感嗎？')) { 
+                state.items = state.items.filter(i => i.id !== id); 
+                renderAll(); 
+            } 
+        };
 
-        load();
+        window.updateCategorySelect = () => {
+            document.getElementById('addCategory').innerHTML = state.categories.map(c => `<option value="${c.id}">${c.emoji} ${c.name}</option>`).join('');
+        };
+        window.toggleSettings = () => {
+            const m = document.getElementById('settingsModal');
+            m.classList.toggle('hidden');
+            if(!m.classList.contains('hidden')) {
+                const l = document.getElementById('categoryOrderList');
+                l.innerHTML = state.categories.map(c => `<div class="flex items-center justify-between bg-[#FAF7F2] p-3 rounded-xl border border-[#F5EBE0] cursor-move" data-id="${c.id}"><span class="text-sm">${c.emoji} ${c.name}</span><button onclick="deleteCat('${c.id}')" class="text-red-300">✕</button></div>`).join('');
+                new Sortable(l, { animation:150, onEnd: () => {
+                    const ids = Array.from(l.children).map(el => el.dataset.id);
+                    state.categories.sort((a,b) => ids.indexOf(a.id) - ids.indexOf(b.id));
+                    saveData();
+                }});
+            } else renderTabs();
+        };
+        window.exportData = () => {
+            const blob = new Blob([JSON.stringify(state)], {type:"application/json"});
+            const a = document.createElement("a");
+            a.href = URL.createObjectURL(blob);
+            a.download = `MY_Pocket_v2_${new Date().toLocaleDateString()}.json`;
+            a.click();
+        };
+        window.importData = () => {
+            const input = document.createElement('input'); input.type = 'file'; input.accept = '.json';
+            input.onchange = e => {
+                const reader = new FileReader();
+                reader.onload = re => { state = JSON.parse(re.target.result); renderAll(); alert("匯入成功！"); };
+                reader.readAsText(e.target.files[0]);
+            };
+            input.click();
+        };
+        window.addCategoryPrompt = () => {
+            const n = prompt("分類名稱？"), e = prompt("Emoji？", "✨");
+            if(n) { state.categories.push({id:'cat_'+Date.now(), name:n, emoji:e}); renderAll(); toggleSettings(); toggleSettings(); }
+        };
+        window.deleteCat = id => { if(confirm('確定刪除分類？')) { state.categories = state.categories.filter(c => c.id !== id); renderAll(); toggleSettings(); toggleSettings(); } };
+
+        init();
     </script>
 </body>
 </html>
