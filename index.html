@@ -6,335 +6,394 @@
     <title>M.Y 靈感收納箱</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" rel="stylesheet">
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getFirestore, doc, onSnapshot, setDoc, collection, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-        import { getAuth, signInAnonymously } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
-
-        const firebaseConfig = JSON.parse(__firebase_config);
-        const app = initializeApp(firebaseConfig);
-        const db = getFirestore(app);
-        const auth = getAuth(app);
-        const appId = typeof __app_id !== 'undefined' ? __app_id : 'my-box-v1';
-
-        // 全域狀態管理
-        window.appState = {
-            boxCode: localStorage.getItem('my_box_code') || '',
-            categories: [
-                { id: 'all', name: '全部靈感', emoji: '🌟' },
-                { id: 'life', name: '生活靈感', emoji: '💡' },
-                { id: 'recipe', name: '食譜料理', emoji: '🍳' },
-                { id: 'parenting', name: '育兒親子', emoji: '👶🏻' }
-            ],
-            items: [],
-            activeTab: 'all',
-            isOnline: false
-        };
-
-        // 更新狀態燈 UI
-        function updateStatusLight(online) {
-            window.appState.isOnline = online;
-            const light = document.getElementById('status-light');
-            const text = document.getElementById('status-text');
-            if (online) {
-                light.classList.replace('bg-gray-300', 'bg-green-500');
-                light.classList.add('shadow-[0_0_8px_rgba(34,197,94,0.6)]');
-                text.innerText = '已連線';
-                text.classList.add('text-green-600');
-            } else {
-                light.classList.replace('bg-green-500', 'bg-gray-300');
-                light.classList.remove('shadow-[0_0_8px_rgba(34,197,94,0.6)]');
-                text.innerText = '同步中';
-                text.classList.remove('text-green-600');
-            }
-        }
-
-        // --- 核心同步邏輯 ---
-        window.loginBox = async (code) => {
-            if (!code) return;
-            const cleanCode = code.trim().toUpperCase();
-            
-            document.getElementById('login-screen').classList.add('hidden');
-            document.getElementById('main-content').classList.remove('hidden');
-            document.getElementById('loading-overlay').classList.remove('hidden');
-            
-            window.appState.boxCode = cleanCode;
-            localStorage.setItem('my_box_code', cleanCode);
-            document.getElementById('display-code').innerText = cleanCode;
-
-            try {
-                await signInAnonymously(auth);
-                startSync(cleanCode);
-            } catch (err) {
-                console.error("Login failed", err);
-                updateStatusLight(false);
-            }
-        };
-
-        const startSync = (code) => {
-            onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'configs', code), (docSnap) => {
-                if (docSnap.exists()) {
-                    window.appState.categories = docSnap.data().list;
-                    renderTabs();
-                } else {
-                    saveConfigs(); 
-                }
-                updateStatusLight(true);
-            }, (err) => updateStatusLight(false));
-
-            onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'items_' + code), (snap) => {
-                window.appState.items = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-                renderItems();
-                document.getElementById('loading-overlay').classList.add('hidden');
-            }, (err) => updateStatusLight(false));
-        };
-
-        window.logout = () => {
-            localStorage.removeItem('my_box_code');
-            location.reload();
-        };
-
-        const saveConfigs = async () => {
-            if (!window.appState.boxCode) return;
-            await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'configs', window.appState.boxCode), {
-                list: window.appState.categories
-            });
-        };
-
-        window.addItem = async (e) => {
-            e.preventDefault();
-            const form = e.target;
-            const id = Date.now().toString();
-            await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'items_' + window.appState.boxCode, id), {
-                title: form.title.value,
-                url: form.url.value,
-                note: form.note.value,
-                categoryId: form.categoryId.value,
-                createdAt: new Date().toISOString()
-            });
-            form.reset();
-            window.hideModal('add-modal');
-        };
-
-        window.deleteItem = async (id) => {
-            const modal = document.createElement('div');
-            modal.innerHTML = `
-                <div class="fixed inset-0 z-[200] bg-black/40 backdrop-blur-sm flex items-center justify-center p-4">
-                    <div class="bg-white rounded-3xl p-6 w-full max-w-xs text-center shadow-2xl">
-                        <div class="text-3xl mb-3">🗑️</div>
-                        <p class="text-[#4A3728] font-bold mb-6">確定要刪除這條靈感嗎？</p>
-                        <div class="flex space-x-3">
-                            <button id="cancel-del" class="flex-1 py-3 text-sm text-gray-400">取消</button>
-                            <button id="confirm-del" class="flex-1 py-3 bg-red-400 text-white rounded-xl font-bold">刪除</button>
-                        </div>
-                    </div>
-                </div>
-            `;
-            document.body.appendChild(modal);
-            modal.querySelector('#cancel-del').onclick = () => modal.remove();
-            modal.querySelector('#confirm-del').onclick = async () => {
-                await deleteDoc(doc(db, 'artifacts', appId, 'public', 'data', 'items_' + window.appState.boxCode, id));
-                modal.remove();
-            };
-        };
-
-        function renderTabs() {
-            const container = document.getElementById('tabs-container');
-            container.innerHTML = window.appState.categories.map(cat => `
-                <button onclick="window.setTab('${cat.id}')" 
-                    class="flex-shrink-0 px-5 py-2 rounded-full border transition-all text-sm whitespace-nowrap ${window.appState.activeTab === cat.id ? 'bg-[#A67B5B] text-white border-[#A67B5B]' : 'bg-white text-[#6F4E37] border-[#D2B48C]'}">
-                    ${cat.emoji} ${cat.name}
-                </button>
-            `).join('');
-            
-            const select = document.querySelector('select[name="categoryId"]');
-            if (select) {
-                select.innerHTML = window.appState.categories.map(c => `<option value="${c.id}">${c.emoji} ${c.name}</option>`).join('');
-            }
-        }
-
-        function renderItems() {
-            const container = document.getElementById('items-grid');
-            let filtered = window.appState.items;
-            if (window.appState.activeTab !== 'all') {
-                filtered = filtered.filter(i => i.categoryId === window.appState.activeTab);
-            }
-            
-            if (filtered.length === 0) {
-                container.innerHTML = `<div class="col-span-full py-20 text-center opacity-30 text-sm italic">這裡空空的，來點靈感吧 ☕</div>`;
-                return;
-            }
-
-            container.innerHTML = filtered.sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt)).map(item => `
-                <div class="bg-white rounded-3xl p-5 border border-[#F5EBE0] shadow-sm relative group animate-fadeIn">
-                    <button onclick="window.deleteItem('${item.id}')" class="absolute -top-1 -right-1 w-7 h-7 bg-white/90 border border-red-50 text-red-300 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-10">
-                        <i class="fas fa-times text-[10px]"></i>
-                    </button>
-                    <div class="mb-3">
-                        <span class="text-[10px] px-2 py-0.5 rounded-full bg-[#FAF7F2] text-[#A67B5B] border border-[#F5EBE0]">
-                            ${window.appState.categories.find(c => c.id === item.categoryId)?.emoji || '🔖'} 
-                            ${window.appState.categories.find(c => c.id === item.categoryId)?.name || '未分類'}
-                        </span>
-                    </div>
-                    <h3 class="font-bold text-[#4A3728] mb-2 leading-snug line-clamp-2 text-sm">${item.title}</h3>
-                    <p class="text-[11px] text-[#8B7355] line-clamp-2 mb-4 h-8">${item.note || '無備註內容'}</p>
-                    <a href="${item.url}" target="_blank" class="block w-full py-2 bg-[#FDFBF7] border border-[#F5EBE0] text-[#A67B5B] text-[11px] text-center rounded-xl active:bg-[#F5EBE0] transition-colors">
-                        <i class="fas fa-link mr-1 text-[10px]"></i> 開啟原文
-                    </a>
-                </div>
-            `).join('');
-        }
-
-        window.setTab = (id) => {
-            window.appState.activeTab = id;
-            renderTabs();
-            renderItems();
-        };
-
-        window.updateCat = (index, key, val) => {
-            window.appState.categories[index][key] = val;
-            saveConfigs();
-        };
-
-        window.addCat = () => {
-            window.appState.categories.push({ id: 'cat_' + Date.now(), name: '新分類', emoji: '📂' });
-            saveConfigs();
-        };
-
-        window.showModal = (id) => {
-            document.getElementById(id).classList.remove('hidden');
-            if(id === 'settings-modal') renderEditList();
-        }
-        window.hideModal = (id) => document.getElementById(id).classList.add('hidden');
-
-        function renderEditList() {
-            const list = document.getElementById('edit-list');
-            list.innerHTML = window.appState.categories.map((cat, i) => `
-                <div class="flex items-center space-x-2 bg-[#FAF7F2] p-2 rounded-xl border border-[#F5EBE0]">
-                    <input type="text" value="${cat.emoji}" onchange="window.updateCat(${i}, 'emoji', this.value)" class="w-8 text-center bg-transparent border-b border-[#D2B48C] outline-none">
-                    <input type="text" value="${cat.name}" onchange="window.updateCat(${i}, 'name', this.value)" class="flex-1 bg-transparent border-b border-[#D2B48C] text-sm outline-none">
-                </div>
-            `).join('');
-        }
-
-        window.onload = () => {
-            if (window.appState.boxCode) {
-                window.loginBox(window.appState.boxCode);
-            } else {
-                document.getElementById('login-screen').classList.remove('hidden');
-            }
-        };
-    </script>
     <style>
-        body { background-color: #FDFBF7; color: #4A3728; font-family: -apple-system, sans-serif; -webkit-tap-highlight-color: transparent; }
+        :root {
+            --milk: #fdf8f3; --cream: #f5ece0; --latte: #e8d5bc;
+            --caramel: #c9a97a; --brown: #8b6343; --text: #3d2b1a;
+            --white: #fffefb; --shadow: rgba(139, 99, 67, 0.1);
+        }
+        body { background-color: var(--milk); color: var(--text); font-family: -apple-system, "Noto Sans TC", sans-serif; overflow-x: hidden; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
-        @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
-        .animate-fadeIn { animation: fadeIn 0.3s ease-out forwards; }
-        .glass { background: rgba(253, 251, 247, 0.85); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
-        input, select, textarea { font-size: 16px !important; }
-        #tabs-container { scroll-behavior: smooth; -webkit-overflow-scrolling: touch; }
+        .glass-header { backdrop-filter: blur(15px); background: rgba(253, 248, 243, 0.85); }
+        
+        /* 卡片與清單樣式 */
+        .card-style { background: var(--white); border-radius: 20px; border: 1px solid var(--cream); transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1); box-shadow: 0 4px 15px var(--shadow); }
+        .list-style { background: var(--white); border-radius: 16px; border: 1px solid var(--cream); display: flex; align-items: center; padding: 12px; margin-bottom: 10px; box-shadow: 0 2px 8px var(--shadow); }
+        
+        /* 拖曳動畫 */
+        .dragging { opacity: 0.5; transform: scale(0.95); }
+        .draggable-item { cursor: grab; }
+        .draggable-item:active { cursor: grabbing; }
+
+        .btn-primary { background-color: var(--brown); color: white; border-radius: 14px; }
+        .tab-active { background-color: var(--brown) !important; color: white !important; border-color: var(--brown) !important; }
+        .tag { font-size: 10px; padding: 2px 8px; border-radius: 8px; background: var(--milk); border: 1px solid var(--cream); color: var(--brown); }
+        
+        /* 模擬 Loading */
+        .loader { width: 20px; height: 20px; border: 2px solid var(--cream); border-top: 2px solid var(--brown); border-radius: 50%; animation: spin 1s linear infinite; }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
     </style>
 </head>
-<body class="pb-24">
+<body class="pb-28">
 
-    <!-- 登入頁面 -->
-    <div id="login-screen" class="fixed inset-0 z-[100] bg-[#FDFBF7] flex items-center justify-center p-8 hidden">
-        <div class="w-full max-w-sm text-center">
-            <div class="text-6xl mb-6">📦</div>
-            <h1 class="text-2xl font-bold mb-2 text-[#4A3728]">M.Y 靈感收納箱</h1>
-            <p class="text-[#8B7355] text-sm mb-10 italic">跨裝置同步，留住妳的每個好點子</p>
-            <input id="box-input" type="text" placeholder="輸入收納箱號碼 (如: MYLOVE)" class="w-full px-6 py-4 bg-white border border-[#D2B48C] rounded-2xl text-center text-xl font-bold tracking-widest focus:outline-none mb-6 uppercase shadow-sm">
-            <button onclick="window.loginBox(document.getElementById('box-input').value)" class="w-full py-4 bg-[#A67B5B] text-white rounded-2xl font-bold shadow-lg shadow-[#A67B5B]/20 active:scale-95 transition-transform">
-                開啟同步空間
-            </button>
+    <!-- Header -->
+    <header class="glass-header sticky top-0 z-40 border-b border-[#F5EBE0] px-4 py-4">
+        <div class="max-w-4xl mx-auto flex items-center justify-between">
+            <div class="flex items-center space-x-2">
+                <span class="text-2xl">🧸</span>
+                <h1 class="text-lg font-bold tracking-tight">M.Y 靈感收納箱</h1>
+            </div>
+            <div class="flex space-x-3">
+                <button onclick="toggleView()" class="w-9 h-9 rounded-full bg-white border border-cream text-brown flex items-center justify-center shadow-sm">
+                    <i id="viewIcon" class="fas fa-th-large"></i>
+                </button>
+                <button onclick="openSync()" class="w-9 h-9 rounded-full bg-white border border-cream text-brown flex items-center justify-center shadow-sm">
+                    <i class="fas fa-sync-alt"></i>
+                </button>
+                <button onclick="openSettings()" class="w-9 h-9 rounded-full bg-white border border-cream text-brown flex items-center justify-center shadow-sm">
+                    <i class="fas fa-sliders-h"></i>
+                </button>
+            </div>
         </div>
-    </div>
+    </header>
 
-    <!-- 主要內容 -->
-    <div id="main-content" class="hidden">
-        <header class="glass sticky top-0 z-40 border-b border-[#F5EBE0] px-4 py-4">
-            <div class="max-w-4xl mx-auto flex items-center justify-between">
-                <div>
-                    <h1 class="font-bold text-lg text-[#4A3728]">M.Y 靈感收納箱</h1>
-                    <div class="flex items-center space-x-2 mt-0.5">
-                        <div id="status-light" class="w-2 h-2 rounded-full bg-gray-300 transition-all duration-500"></div>
-                        <span id="status-text" class="text-[10px] text-gray-400 font-medium">同步中</span>
-                        <span class="text-[10px] text-gray-300">|</span>
-                        <div class="text-[10px] text-[#A67B5B] uppercase tracking-tighter">Box: <span id="display-code" class="font-mono font-bold">---</span></div>
-                    </div>
-                </div>
-                <div class="flex space-x-2">
-                    <button onclick="window.showModal('settings-modal')" class="w-9 h-9 rounded-full bg-white border border-[#F5EBE0] flex items-center justify-center text-[#A67B5B] shadow-sm"><i class="fas fa-cog text-sm"></i></button>
-                    <button onclick="window.logout()" class="w-9 h-9 rounded-full bg-white border border-[#F5EBE0] flex items-center justify-center text-red-200 shadow-sm"><i class="fas fa-sign-out-alt text-sm"></i></button>
-                </div>
-            </div>
-        </header>
+    <main class="max-w-4xl mx-auto px-4 py-6">
+        <!-- Search -->
+        <div class="relative mb-6">
+            <i class="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-caramel opacity-60"></i>
+            <input type="text" id="searchInput" oninput="renderItems()" placeholder="搜尋靈感內容、#標籤..." 
+                class="w-full pl-11 pr-4 py-3.5 bg-white border border-cream rounded-2xl shadow-sm focus:outline-none focus:ring-2 focus:ring-latte/50">
+        </div>
 
-        <main class="max-w-4xl mx-auto px-4 py-6">
-            <!-- 修復後的橫向捲動容器 -->
-            <div id="tabs-container" class="flex flex-nowrap space-x-2 overflow-x-auto no-scrollbar pb-6 mb-4"></div>
-            
-            <div id="items-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
-                <!-- 由 JS 渲染 -->
-            </div>
-        </main>
-    </div>
+        <!-- Categories (Draggable) -->
+        <div id="tabsContainer" class="flex space-x-2 overflow-x-auto no-scrollbar pb-4">
+            <!-- JS Render -->
+        </div>
 
-    <!-- 載入層 -->
-    <div id="loading-overlay" class="fixed inset-0 z-[90] bg-[#FDFBF7]/90 flex flex-col items-center justify-center hidden">
-        <div class="animate-spin rounded-full h-8 w-8 border-4 border-[#A67B5B] border-t-transparent mb-4"></div>
-        <div class="text-[#A67B5B] text-xs font-medium">同步資料中...</div>
-    </div>
+        <!-- Grid/List Container -->
+        <div id="itemsContainer" class="grid grid-cols-2 gap-3 md:gap-5">
+            <!-- JS Render -->
+        </div>
+    </main>
 
-    <!-- 新增按鈕 -->
-    <button onclick="window.showModal('add-modal')" class="fixed bottom-8 right-6 w-14 h-14 bg-[#A67B5B] text-white rounded-full shadow-xl flex items-center justify-center text-2xl z-50 active:scale-90 transition-transform">
-        <i class="fas fa-plus"></i>
+    <!-- Floating Add -->
+    <button onclick="showAdd()" class="fixed bottom-10 right-6 w-14 h-14 btn-primary shadow-lg flex items-center justify-center text-xl z-50">
+        <i class="fas fa-feather-alt"></i>
     </button>
 
-    <!-- Modal: 新增 -->
-    <div id="add-modal" class="fixed inset-0 z-[110] bg-black/40 hidden flex items-center justify-center p-4 backdrop-blur-sm">
-        <div class="bg-white w-full max-w-md rounded-3xl p-8 animate-fadeIn shadow-2xl">
+    <!-- Modal: 新增靈感 -->
+    <div id="addModal" class="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/40 hidden backdrop-blur-sm p-4">
+        <div class="bg-white w-full max-w-lg rounded-[32px] p-6 shadow-2xl overflow-y-auto max-h-[85vh]">
             <div class="flex justify-between items-center mb-6">
-                <h2 class="text-xl font-bold flex items-center text-[#4A3728]"><span class="mr-2 text-2xl">📝</span> 新增靈感</h2>
-                <button onclick="window.hideModal('add-modal')" class="text-gray-300"><i class="fas fa-times"></i></button>
+                <h2 class="text-xl font-bold">✨ 捕捉新靈感</h2>
+                <button onclick="hideAdd()" class="text-gray-300"><i class="fas fa-times text-xl"></i></button>
             </div>
-            <form onsubmit="window.addItem(event)" class="space-y-4">
+            
+            <form onsubmit="saveNewItem(event)" class="space-y-4">
                 <div class="space-y-1">
-                    <label class="text-[10px] font-bold text-[#A67B5B] ml-1">靈感標題</label>
-                    <input name="title" required placeholder="例如: 好看的親子餐廳" class="w-full p-3 bg-[#FAF7F2] rounded-xl border border-[#F5EBE0] outline-none text-sm focus:border-[#D2B48C] transition-colors">
+                    <label class="text-[11px] font-bold text-brown ml-1 uppercase opacity-60">連結 (自動抓取)</label>
+                    <div class="relative">
+                        <input name="url" id="urlInput" onblur="autoFetch(this.value)" type="url" placeholder="貼上 IG 或 Threads 連結" class="w-full px-4 py-3.5 bg-milk border border-cream rounded-2xl focus:outline-none focus:border-caramel transition-colors">
+                        <div id="urlLoader" class="absolute right-4 top-1/2 -translate-y-1/2 hidden"><div class="loader"></div></div>
+                    </div>
                 </div>
+
                 <div class="space-y-1">
-                    <label class="text-[10px] font-bold text-[#A67B5B] ml-1">網址連結</label>
-                    <input name="url" required type="url" placeholder="https://..." class="w-full p-3 bg-[#FAF7F2] rounded-xl border border-[#F5EBE0] outline-none text-sm focus:border-[#D2B48C] transition-colors">
+                    <label class="text-[11px] font-bold text-brown ml-1 uppercase opacity-60">封面預覽</label>
+                    <div id="dropZone" onclick="document.getElementById('fileInput').click()" class="w-full h-36 border-2 border-dashed border-cream rounded-2xl bg-milk flex items-center justify-center cursor-pointer overflow-hidden relative">
+                        <div id="previewText" class="text-caramel text-sm flex flex-col items-center"><i class="fas fa-cloud-upload-alt text-2xl mb-2"></i>點擊或貼上圖片</div>
+                        <img id="imagePreview" class="hidden h-full w-full object-cover">
+                        <button type="button" id="clearImgBtn" onclick="clearImage(event)" class="hidden absolute top-2 right-2 w-7 h-7 bg-white/80 rounded-full text-xs text-red-400 border border-red-50">✕</button>
+                    </div>
+                    <input type="file" id="fileInput" accept="image/*" class="hidden" onchange="handleFile(this.files[0])">
+                    <input type="hidden" name="imageData" id="imageData">
                 </div>
+
                 <div class="space-y-1">
-                    <label class="text-[10px] font-bold text-[#A67B5B] ml-1">分類</label>
-                    <select name="categoryId" class="w-full p-3 bg-[#FAF7F2] rounded-xl border border-[#F5EBE0] outline-none text-sm"></select>
+                    <label class="text-[11px] font-bold text-brown ml-1 uppercase opacity-60">標題與筆記</label>
+                    <input name="title" id="titleInput" required placeholder="給這個靈感一個標題" class="w-full px-4 py-3.5 bg-milk border border-cream rounded-2xl mb-2 focus:outline-none">
+                    <textarea name="note" id="noteInput" rows="2" placeholder="寫點什麼筆記..." class="w-full px-4 py-3.5 bg-milk border border-cream rounded-2xl focus:outline-none"></textarea>
                 </div>
-                <div class="space-y-1">
-                    <label class="text-[10px] font-bold text-[#A67B5B] ml-1">備註</label>
-                    <textarea name="note" placeholder="紀錄一下這份靈感的亮點..." rows="3" class="w-full p-3 bg-[#FAF7F2] rounded-xl border border-[#F5EBE0] outline-none text-sm focus:border-[#D2B48C] transition-colors"></textarea>
+
+                <div class="grid grid-cols-2 gap-3">
+                    <div class="space-y-1">
+                        <label class="text-[11px] font-bold text-brown ml-1 uppercase opacity-60">存放位置</label>
+                        <select name="categoryId" id="catSelect" class="w-full px-3 py-3.5 bg-milk border border-cream rounded-2xl focus:outline-none"></select>
+                    </div>
+                    <div class="space-y-1">
+                        <label class="text-[11px] font-bold text-brown ml-1 uppercase opacity-60 flex justify-between">
+                            標籤 <span onclick="autoTags()" class="cursor-pointer text-blue-400">✨ AI 幫貼</span>
+                        </label>
+                        <input name="tags" id="tagsInput" placeholder="美食, 探店" class="w-full px-3 py-3.5 bg-milk border border-cream rounded-2xl focus:outline-none text-sm">
+                    </div>
                 </div>
-                <div class="pt-4">
-                    <button type="submit" class="w-full py-4 bg-[#A67B5B] text-white rounded-2xl font-bold shadow-lg shadow-[#A67B5B]/20 active:opacity-80 transition-all">
-                        存入收納箱
-                    </button>
-                </div>
+
+                <button type="submit" class="w-full py-4 btn-primary font-bold shadow-lg mt-4 text-lg">確認收藏</button>
             </form>
         </div>
     </div>
 
-    <!-- Modal: 設定 -->
-    <div id="settings-modal" class="fixed inset-0 z-[110] bg-black/40 hidden flex items-center justify-center p-4 backdrop-blur-sm">
-        <div class="bg-white w-full max-w-md rounded-3xl p-8 animate-fadeIn shadow-2xl">
-            <div class="flex justify-between items-center mb-6">
-                <h2 class="font-bold text-[#4A3728]">分類管理</h2>
-                <button onclick="window.addCat()" class="text-xs text-[#A67B5B] font-bold px-3 py-1 bg-[#FAF7F2] rounded-full">+ 新增</button>
+    <!-- Modal: 代號同步 -->
+    <div id="syncModal" class="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/40 hidden backdrop-blur-sm p-4">
+        <div class="bg-white w-full max-w-sm rounded-[32px] p-8 shadow-2xl text-center">
+            <div class="w-16 h-16 bg-milk rounded-full flex items-center justify-center mx-auto mb-4 border border-cream text-caramel text-2xl">
+                <i class="fas fa-fingerprint"></i>
             </div>
-            <div id="edit-list" class="space-y-3 mb-8 max-h-60 overflow-y-auto pr-1 no-scrollbar"></div>
-            <button onclick="window.hideModal('settings-modal')" class="w-full py-4 bg-[#A67B5B] text-white rounded-xl font-bold shadow-md">完成設定</button>
+            <h2 class="text-xl font-bold mb-2">專屬同步代號</h2>
+            <p class="text-xs text-brown opacity-60 mb-6 leading-relaxed">設定一個妳記得住的代號（例如：MY2024），<br>在任何裝置輸入此代號即可登入同步。</p>
+            
+            <input type="text" id="syncIdInput" placeholder="輸入妳的專屬代號" class="w-full px-4 py-4 bg-milk border border-cream rounded-2xl mb-4 text-center font-bold tracking-widest uppercase focus:outline-none focus:border-brown transition-all">
+            
+            <div class="grid grid-cols-2 gap-3">
+                <button onclick="handleSync('save')" class="py-3.5 btn-primary text-sm font-bold shadow-md">保存至雲端</button>
+                <button onclick="handleSync('load')" class="py-3.5 bg-milk text-brown border border-cream rounded-xl text-sm font-bold">載入同步</button>
+            </div>
+            <button onclick="closeSync()" class="mt-6 text-xs text-gray-400 font-medium underline underline-offset-4">暫不設定</button>
         </div>
     </div>
 
+    <!-- Modal: 管理與拖曳排序 -->
+    <div id="settingsModal" class="fixed inset-0 z-[60] flex items-end sm:items-center justify-center bg-black/40 hidden backdrop-blur-sm p-4">
+        <div class="bg-white w-full max-w-md rounded-[32px] p-6 shadow-2xl">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-xl font-bold">自訂分類排序</h2>
+                <button onclick="addCategory()" class="text-sm font-bold text-brown">+ 新增</button>
+            </div>
+            <p class="text-[10px] text-gray-400 mb-4 italic"><i class="fas fa-info-circle mr-1"></i>小技巧：直接上下拖曳分類即可調整順序喔！</p>
+            <div id="settingsList" class="space-y-2 max-h-80 overflow-y-auto pr-1">
+                <!-- JS Render Sortable -->
+            </div>
+            <button onclick="closeSettings()" class="w-full py-4 btn-primary font-bold mt-6 shadow-lg">儲存順序</button>
+        </div>
+    </div>
+
+    <script>
+        let state = {
+            viewMode: 'grid', // grid or list
+            categories: [
+                { id: 'all', name: '全部靈感', emoji: '🌟' },
+                { id: 'handmade', name: '手作靈感', emoji: '🎨' },
+                { id: 'travel', name: '旅遊相關', emoji: '✈️' },
+                { id: 'recommend', name: '推薦小物', emoji: '🛒' },
+                { id: 'book', name: '書籍收藏', emoji: '📚' },
+                { id: 'foodmap', name: '美食地圖', emoji: '📍' }
+            ],
+            items: [],
+            activeTab: 'all'
+        };
+
+        const STORAGE_KEY = 'my_insp_v4';
+
+        function load() {
+            const data = localStorage.getItem(STORAGE_KEY);
+            if (data) state = JSON.parse(data);
+            renderAll();
+        }
+
+        function save() {
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
+            renderAll();
+        }
+
+        function renderAll() {
+            renderTabs();
+            renderItems();
+            updateSelect();
+        }
+
+        // 佈局切換
+        function toggleView() {
+            state.viewMode = state.viewMode === 'grid' ? 'list' : 'grid';
+            document.getElementById('viewIcon').className = state.viewMode === 'grid' ? 'fas fa-th-large' : 'fas fa-list';
+            save();
+        }
+
+        function renderTabs() {
+            const container = document.getElementById('tabsContainer');
+            container.innerHTML = state.categories.map(cat => `
+                <button onclick="setTab('${cat.id}')" 
+                    class="flex-shrink-0 px-5 py-2.5 rounded-full border transition-all text-sm whitespace-nowrap ${state.activeTab === cat.id ? 'tab-active shadow-md' : 'bg-white text-brown border-cream'}">
+                    <span>${cat.emoji}</span> <span class="ml-1 font-medium">${cat.name}</span>
+                </button>
+            `).join('');
+        }
+
+        function renderItems() {
+            const container = document.getElementById('itemsContainer');
+            const search = document.getElementById('searchInput').value.toLowerCase();
+            let filtered = state.activeTab === 'all' ? state.items : state.items.filter(i => i.categoryId === state.activeTab);
+            
+            if (search) {
+                filtered = filtered.filter(i => 
+                    i.title.toLowerCase().includes(search) || 
+                    i.note.toLowerCase().includes(search) || 
+                    (i.tags && i.tags.toLowerCase().includes(search))
+                );
+            }
+
+            if (state.viewMode === 'grid') {
+                container.className = "grid grid-cols-2 gap-3 md:gap-5";
+                container.innerHTML = filtered.map(item => `
+                    <div class="card-style overflow-hidden flex flex-col relative group">
+                        <button onclick="deleteItem('${item.id}')" class="absolute top-2 right-2 w-6 h-6 bg-white/90 rounded-full text-red-300 text-[10px] flex items-center justify-center z-10 opacity-0 group-hover:opacity-100 transition-opacity"><i class="fas fa-trash"></i></button>
+                        <div class="aspect-square bg-milk flex items-center justify-center overflow-hidden">
+                            ${item.image ? `<img src="${item.image}" class="w-full h-full object-cover">` : `<i class="far fa-image text-3xl text-latte"></i>`}
+                        </div>
+                        <div class="p-3 flex-1 flex flex-col">
+                            <h3 class="text-xs font-bold text-text mb-1 line-clamp-2 leading-snug">${item.title}</h3>
+                            <div class="flex flex-wrap gap-1 mb-2">
+                                ${(item.tags || '').split(',').filter(t => t.trim()).map(t => `<span class="tag">#${t.trim()}</span>`).join('')}
+                            </div>
+                            <a href="${item.url}" target="_blank" class="mt-auto block w-full py-1.5 text-center rounded-lg bg-milk border border-cream text-brown text-[10px] font-bold">查看原文</a>
+                        </div>
+                    </div>`).join('');
+            } else {
+                container.className = "flex flex-col space-y-2";
+                container.innerHTML = filtered.map(item => `
+                    <div class="list-style group">
+                        <div class="w-14 h-14 rounded-xl bg-milk flex-shrink-0 mr-4 overflow-hidden border border-cream">
+                            ${item.image ? `<img src="${item.image}" class="w-full h-full object-cover">` : `<i class="far fa-image text-latte flex items-center justify-center h-full"></i>`}
+                        </div>
+                        <div class="flex-1 min-w-0 pr-2">
+                            <h3 class="text-sm font-bold text-text truncate mb-1">${item.title}</h3>
+                            <div class="flex gap-2">
+                                <span class="text-[10px] text-brown/60 truncate">${item.note || '無筆記'}</span>
+                            </div>
+                        </div>
+                        <div class="flex items-center space-x-2">
+                            <a href="${item.url}" target="_blank" class="w-8 h-8 rounded-full bg-milk border border-cream flex items-center justify-center text-brown text-xs"><i class="fas fa-link"></i></a>
+                            <button onclick="deleteItem('${item.id}')" class="w-8 h-8 rounded-full bg-red-50 text-red-300 text-xs opacity-0 group-hover:opacity-100 transition-opacity"><i class="fas fa-trash"></i></button>
+                        </div>
+                    </div>`).join('');
+            }
+        }
+
+        // 自動資訊抓取 (模擬)
+        function autoFetch(url) {
+            if(!url) return;
+            const loader = document.getElementById('urlLoader');
+            loader.classList.remove('hidden');
+            setTimeout(() => {
+                const domain = new URL(url).hostname.split('.')[1] || 'Web';
+                document.getElementById('titleInput').value = `${domain.toUpperCase()} 的精彩分享`;
+                loader.classList.add('hidden');
+            }, 800);
+        }
+
+        // AI 標籤 (模擬)
+        function autoTags() {
+            const title = document.getElementById('titleInput').value;
+            const mapping = { '食譜': '料理, 晚餐', '手作': 'DIY, 創意', '旅遊': '景點, 拍照', '育兒': '寶寶, 親子' };
+            let result = "生活";
+            for(let k in mapping) if(title.includes(k)) result = mapping[k];
+            document.getElementById('tagsInput').value = result;
+        }
+
+        // 圖片處理
+        function handleFile(file) {
+            if (!file) return;
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                document.getElementById('imageData').value = e.target.result;
+                document.getElementById('imagePreview').src = e.target.result;
+                document.getElementById('imagePreview').classList.remove('hidden');
+                document.getElementById('previewText').classList.add('hidden');
+                document.getElementById('clearImgBtn').classList.remove('hidden');
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function clearImage(e) {
+            e.stopPropagation();
+            document.getElementById('imageData').value = '';
+            document.getElementById('imagePreview').src = '';
+            document.getElementById('imagePreview').classList.add('hidden');
+            document.getElementById('previewText').classList.remove('hidden');
+            document.getElementById('clearImgBtn').classList.add('hidden');
+        }
+
+        // 監聽貼上
+        document.addEventListener('paste', e => {
+            const items = e.clipboardData.items;
+            for (let i = 0; i < items.length; i++) {
+                if (items[i].type.indexOf('image') !== -1) handleFile(items[i].getAsFile());
+            }
+        });
+
+        // 拖曳排序邏輯 (使用原生 DragDrop)
+        let draggedIdx = null;
+        function renderSettings() {
+            const list = document.getElementById('settingsList');
+            list.innerHTML = state.categories.map((cat, idx) => `
+                <div draggable="true" ondragstart="dragStart(${idx})" ondragover="dragOver(event, ${idx})" ondragend="dragEnd()"
+                    class="draggable-item flex items-center space-x-3 bg-milk p-4 rounded-2xl border border-cream transition-all hover:border-latte ${cat.id === 'all' ? 'opacity-50 pointer-events-none' : ''}">
+                    <i class="fas fa-bars text-latte text-xs"></i>
+                    <span class="text-sm">${cat.emoji}</span>
+                    <input type="text" value="${cat.name}" onchange="updateCat(${idx}, 'name', this.value)" class="flex-1 bg-transparent border-none text-sm font-medium focus:ring-0">
+                    <button onclick="removeCat(${idx})" class="text-red-200 hover:text-red-400"><i class="fas fa-minus-circle"></i></button>
+                </div>
+            `).join('');
+        }
+
+        window.dragStart = (idx) => { draggedIdx = idx; event.target.classList.add('dragging'); };
+        window.dragEnd = () => { draggedIdx = null; document.querySelectorAll('.draggable-item').forEach(i => i.classList.remove('dragging')); };
+        window.dragOver = (e, idx) => {
+            e.preventDefault();
+            if (draggedIdx === idx || state.categories[idx].id === 'all') return;
+            const arr = [...state.categories];
+            const draggedItem = arr.splice(draggedIdx, 1)[0];
+            arr.splice(idx, 0, draggedItem);
+            state.categories = arr;
+            draggedIdx = idx;
+            renderSettings();
+        };
+
+        // 代號同步邏輯 (模擬雲端)
+        function handleSync(mode) {
+            const id = document.getElementById('syncIdInput').value.trim().toUpperCase();
+            if (!id) return alert('請先輸入代號喔！');
+            
+            if (mode === 'save') {
+                const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(state))));
+                localStorage.setItem(`cloud_sync_${id}`, encoded);
+                alert(`資料已成功綁定至代號 [${id}]\n妳可以在其他裝置輸入此代號載入資料。`);
+            } else {
+                const remoteData = localStorage.getItem(`cloud_sync_${id}`);
+                if (remoteData) {
+                    if (confirm(`找到代號 [${id}] 的資料，是否要載入並覆蓋此裝置內容？`)) {
+                        state = JSON.parse(decodeURIComponent(escape(atob(remoteData))));
+                        save();
+                        location.reload();
+                    }
+                } else {
+                    alert('找不到這個代號的資料喔，請確認代號是否正確。');
+                }
+            }
+        }
+
+        // 基礎功能
+        window.setTab = (id) => { state.activeTab = id; renderAll(); };
+        window.showAdd = () => document.getElementById('addModal').classList.remove('hidden');
+        window.hideAdd = () => { document.getElementById('addModal').classList.add('hidden'); };
+        window.saveNewItem = (e) => {
+            e.preventDefault();
+            const fd = new FormData(e.target);
+            state.items.unshift({ id: Date.now().toString(), title: fd.get('title'), url: fd.get('url'), categoryId: fd.get('categoryId'), note: fd.get('note'), image: fd.get('imageData'), tags: fd.get('tags') });
+            save(); e.target.reset(); clearImage(e); hideAdd();
+        };
+        window.deleteItem = (id) => { if(confirm('要刪除這份靈感嗎？')) { state.items = state.items.filter(i => i.id !== id); save(); } };
+        window.openSettings = () => { document.getElementById('settingsModal').classList.remove('hidden'); renderSettings(); };
+        window.closeSettings = () => { save(); document.getElementById('settingsModal').classList.add('hidden'); };
+        window.addCategory = () => { state.categories.push({ id: 'c'+Date.now(), name: '新分類', emoji: '📂' }); renderSettings(); };
+        window.removeCat = (idx) => { state.categories.splice(idx, 1); renderSettings(); };
+        window.updateCat = (idx, k, v) => { state.categories[idx][k] = v; };
+        window.openSync = () => document.getElementById('syncModal').classList.remove('hidden');
+        window.closeSync = () => document.getElementById('syncModal').classList.add('hidden');
+        function updateSelect() {
+            document.getElementById('catSelect').innerHTML = state.categories.filter(c => c.id !== 'all').map(c => `<option value="${c.id}">${c.emoji} ${c.name}</option>`).join('');
+        }
+
+        load();
+    </script>
 </body>
 </html>
