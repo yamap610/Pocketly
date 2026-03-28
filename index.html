@@ -9,10 +9,10 @@
     <!-- Firebase SDK -->
     <script type="module">
         import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
-        import { getFirestore, doc, onSnapshot, setDoc, collection, query, getDocs } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
-        import { getAuth, signInAnonymously, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, onSnapshot, setDoc, collection, query, deleteDoc } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
 
-        // Firebase 配置 (環境會自動注入 Key)
+        // Firebase 配置
         const firebaseConfig = JSON.parse(__firebase_config);
         const app = initializeApp(firebaseConfig);
         const db = getFirestore(app);
@@ -29,46 +29,55 @@
                 { id: 'parenting', name: '育兒親子', emoji: '👶🏻', sortOrder: 3 }
             ],
             items: [],
-            activeTab: 'all',
-            isEditing: false
+            activeTab: 'all'
         };
 
-        // 初始化 Auth
+        // 初始化 Auth (遵循 RULE 3: Auth Before Queries)
         const initAuth = async () => {
-            await signInAnonymously(auth);
-            onAuthStateChanged(auth, (user) => {
-                if (user) {
-                    window.appState.user = user;
-                    setupListeners();
+            try {
+                if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                    await signInWithCustomToken(auth, __initial_auth_token);
+                } else {
+                    await signInAnonymously(auth);
                 }
-            });
+            } catch (error) {
+                console.error("Auth Error:", error);
+                document.getElementById('items-grid').innerHTML = `<div class="col-span-full text-center py-10 text-red-400">登入失敗，請重新整理頁面</div>`;
+            }
         };
 
-        // 監聽雲端數據
-        const setupListeners = () => {
-            const userId = auth.currentUser.uid;
+        // 監聽雲端數據 (遵循 RULE 1: Strict Paths)
+        const setupListeners = (user) => {
+            if (!user) return;
+            const userId = user.uid;
             
-            // 監聽分類
-            onSnapshot(doc(db, 'artifacts', appId, 'users', userId, 'config', 'categories'), (docSnap) => {
+            // 1. 監聽分類配置
+            const configRef = doc(db, 'artifacts', appId, 'users', userId, 'config', 'categories');
+            onSnapshot(configRef, (docSnap) => {
                 if (docSnap.exists()) {
                     window.appState.categories = docSnap.data().list;
-                    renderTabs();
-                    renderEditList();
                 } else {
-                    saveCategories(); // 首次保存默認值
+                    // 若無設定則初始化一份
+                    saveCategories();
                 }
-            }, (err) => console.error(err));
+                renderTabs();
+                updateSelectOptions();
+            }, (err) => console.error("Categories listener error:", err));
 
-            // 監聽項目
-            onSnapshot(collection(db, 'artifacts', appId, 'users', userId, 'items'), (querySnap) => {
+            // 2. 監聽靈感項目
+            const itemsRef = collection(db, 'artifacts', appId, 'users', userId, 'items');
+            onSnapshot(itemsRef, (querySnap) => {
                 const items = [];
                 querySnap.forEach(doc => items.push({ id: doc.id, ...doc.data() }));
                 window.appState.items = items;
                 renderItems();
+            }, (err) => {
+                console.error("Items listener error:", err);
+                document.getElementById('items-grid').innerHTML = `<div class="col-span-full text-center py-10 text-red-400">存取資料庫失敗，請確認權限</div>`;
             });
         };
 
-        // 保存分類到雲端
+        // 保存分類
         const saveCategories = async () => {
             if (!auth.currentUser) return;
             await setDoc(doc(db, 'artifacts', appId, 'users', auth.currentUser.uid, 'config', 'categories'), {
@@ -76,7 +85,7 @@
             });
         };
 
-        // 保存項目到雲端
+        // 新增靈感
         window.addItem = async (item) => {
             if (!auth.currentUser) return;
             const id = Date.now().toString();
@@ -86,14 +95,13 @@
             });
         };
 
+        // 刪除靈感
         window.deleteItem = async (id) => {
-            if (!auth.currentUser) return;
-            // 簡化刪除：這裡直接重新覆蓋或調用 deleteDoc
-            const { deleteDoc } = await import("https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js");
+            if (!auth.currentUser || !confirm("確定要刪除這條靈感嗎？")) return;
             await deleteDoc(doc(db, 'artifacts', appId, 'users', auth.currentUser.uid, 'items', id));
         };
 
-        // UI 渲染函數
+        // --- UI 渲染 ---
         function renderTabs() {
             const container = document.getElementById('tabs-container');
             container.innerHTML = window.appState.categories.map(cat => `
@@ -104,11 +112,37 @@
             `).join('');
         }
 
+        function updateSelectOptions() {
+            const select = document.querySelector('select[name="categoryId"]');
+            if (select) {
+                select.innerHTML = window.appState.categories.map(c => `<option value="${c.id}">${c.emoji} ${c.name}</option>`).join('');
+            }
+        }
+
+        window.setTab = (id) => {
+            window.appState.activeTab = id;
+            renderTabs();
+            renderItems();
+        };
+
         function renderItems() {
             const container = document.getElementById('items-grid');
-            const filtered = window.appState.activeTab === 'all' 
-                ? window.appState.items 
-                : window.appState.items.filter(i => i.categoryId === window.appState.activeTab);
+            const searchKeyword = document.getElementById('search-input').value.toLowerCase();
+            
+            let filtered = window.appState.items;
+            
+            // 分類過濾
+            if (window.appState.activeTab !== 'all') {
+                filtered = filtered.filter(i => i.categoryId === window.appState.activeTab);
+            }
+            
+            // 搜尋過濾
+            if (searchKeyword) {
+                filtered = filtered.filter(i => 
+                    i.title.toLowerCase().includes(searchKeyword) || 
+                    i.note.toLowerCase().includes(searchKeyword)
+                );
+            }
             
             if (filtered.length === 0) {
                 container.innerHTML = `
@@ -120,9 +154,9 @@
             }
 
             container.innerHTML = filtered.map(item => `
-                <div class="bg-white rounded-2xl shadow-sm border border-[#F5EBE0] overflow-hidden flex flex-col group relative">
-                    <button onclick="window.deleteItem('${item.id}')" class="absolute top-2 right-2 p-2 bg-red-50 text-red-400 rounded-full opacity-0 group-hover:opacity-100 transition-opacity">
-                        <i class="fas fa-trash-alt text-sm"></i>
+                <div class="bg-white rounded-2xl shadow-sm border border-[#F5EBE0] overflow-hidden flex flex-col group relative animate-fadeIn">
+                    <button onclick="window.deleteItem('${item.id}')" class="absolute top-2 right-2 w-8 h-8 flex items-center justify-center bg-white/80 backdrop-blur text-red-400 rounded-full opacity-0 group-hover:opacity-100 transition-opacity border border-red-50">
+                        <i class="fas fa-trash-alt text-xs"></i>
                     </button>
                     <div class="h-4 w-full bg-[#FAF7F2] flex items-center px-4 space-x-1">
                         <div class="w-1.5 h-1.5 rounded-full bg-[#E6D5C3]"></div>
@@ -132,17 +166,17 @@
                             ${window.appState.categories.find(c => c.id === item.categoryId)?.emoji || '🔖'} 
                             ${window.appState.categories.find(c => c.id === item.categoryId)?.name || '未分類'}
                         </span>
-                        <h3 class="text-[#4A3728] font-bold text-lg mb-2 leading-tight">${item.title}</h3>
-                        <p class="text-[#8B7355] text-sm leading-relaxed mb-4">${item.note}</p>
+                        <h3 class="text-[#4A3728] font-bold text-lg mb-2 leading-tight line-clamp-2">${item.title}</h3>
+                        <p class="text-[#8B7355] text-sm leading-relaxed mb-4 line-clamp-3">${item.note}</p>
                         <a href="${item.url}" target="_blank" class="block w-full py-2 text-center rounded-xl bg-[#FDFBF7] border border-[#F5EBE0] text-[#A67B5B] text-sm hover:bg-[#F5EBE0] transition-colors">
-                            <i class="fas fa-link mr-1"></i> 前往原文
+                            <i class="fas fa-link mr-1"></i> 查看原文
                         </a>
                     </div>
                 </div>
             `).join('');
         }
 
-        // 管理面板相關
+        // --- 管理功能 ---
         window.toggleSettings = () => {
             const modal = document.getElementById('settings-modal');
             modal.classList.toggle('hidden');
@@ -153,7 +187,6 @@
             const list = document.getElementById('edit-category-list');
             list.innerHTML = window.appState.categories.map((cat, index) => `
                 <div class="flex items-center space-x-2 bg-[#FAF7F2] p-3 rounded-xl border border-[#F5EBE0]">
-                    <span class="cursor-move text-[#D2B48C]"><i class="fas fa-grip-vertical"></i></span>
                     <input type="text" value="${cat.emoji}" onchange="window.updateCat(${index}, 'emoji', this.value)" class="w-10 p-1 text-center bg-transparent border-b border-[#D2B48C]">
                     <input type="text" value="${cat.name}" onchange="window.updateCat(${index}, 'name', this.value)" class="flex-1 p-1 bg-transparent border-b border-[#D2B48C] text-[#4A3728]">
                     ${index > 0 ? `<button onclick="window.removeCat(${index})" class="text-red-400 p-1"><i class="fas fa-times"></i></button>` : '<div class="w-7"></div>'}
@@ -176,139 +209,136 @@
             saveCategories();
         };
 
-        window.setTab = (id) => {
-            window.appState.activeTab = id;
-            renderTabs();
-            renderItems();
-        };
-
+        // --- 彈窗控制 ---
         window.showAddModal = () => document.getElementById('add-modal').classList.remove('hidden');
         window.hideAddModal = () => document.getElementById('add-modal').classList.add('hidden');
 
         window.submitAdd = async (e) => {
             e.preventDefault();
             const formData = new FormData(e.target);
+            const btn = e.target.querySelector('button[type="submit"]');
+            btn.disabled = true;
+            btn.innerText = "儲存中...";
+            
             await window.addItem({
                 title: formData.get('title'),
                 url: formData.get('url'),
                 note: formData.get('note'),
                 categoryId: formData.get('categoryId')
             });
+            
+            btn.disabled = false;
+            btn.innerText = "儲存靈感";
             e.target.reset();
             hideAddModal();
         };
 
-        // 初始載入
+        // --- 啟動 ---
         window.onload = () => {
-            initAuth();
-            const select = document.querySelector('select[name="categoryId"]');
-            const updateSelect = () => {
-                select.innerHTML = window.appState.categories.map(c => `<option value="${c.id}">${c.emoji} ${c.name}</option>`).join('');
-            };
-            // 監控 categories 變化來更新 select
-            const originalRenderTabs = renderTabs;
-            renderTabs = () => {
-                originalRenderTabs();
-                updateSelect();
-            };
+            onAuthStateChanged(auth, (user) => {
+                if (user) {
+                    window.appState.user = user;
+                    setupListeners(user);
+                } else {
+                    initAuth();
+                }
+            });
+
+            // 搜尋監聽
+            document.getElementById('search-input').addEventListener('input', renderItems);
         };
 
     </script>
     <style>
-        body { background-color: #FDFBF7; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        .animate-fadeIn { animation: fadeIn 0.4s ease-out forwards; }
+        body { background-color: #FDFBF7; font-family: -apple-system, sans-serif; -webkit-tap-highlight-color: transparent; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
         .safe-bottom { padding-bottom: env(safe-area-inset-bottom); }
-        .glass-header { backdrop-filter: blur(10px); background: rgba(253, 251, 247, 0.85); }
+        .glass-header { backdrop-filter: blur(12px); background: rgba(253, 251, 247, 0.8); }
+        input, select, textarea { font-size: 16px !important; } /* 防止 iOS 自動放大 */
     </style>
 </head>
-<body class="text-[#4A3728]">
+<body class="text-[#4A3728] select-none">
 
-    <!-- Header -->
     <header class="glass-header sticky top-0 z-40 border-b border-[#F5EBE0] px-4 py-3">
         <div class="max-w-6xl mx-auto flex items-center justify-between">
             <h1 class="text-xl font-bold flex items-center space-x-2">
                 <span class="text-2xl">☕</span>
                 <span>M.Y 靈感收納箱</span>
             </h1>
-            <div class="flex space-x-2">
-                <button onclick="window.toggleSettings()" class="w-10 h-10 rounded-full bg-white border border-[#F5EBE0] text-[#A67B5B] flex items-center justify-center shadow-sm">
-                    <i class="fas fa-cog"></i>
-                </button>
-            </div>
+            <button onclick="window.toggleSettings()" class="w-10 h-10 rounded-full bg-white border border-[#F5EBE0] text-[#A67B5B] flex items-center justify-center shadow-sm active:scale-90 transition-transform">
+                <i class="fas fa-cog"></i>
+            </button>
         </div>
     </header>
 
     <main class="max-w-6xl mx-auto px-4 py-6 pb-24">
-        <!-- Search & Tabs -->
         <div class="mb-8">
             <div class="relative mb-6">
                 <i class="fas fa-search absolute left-4 top-1/2 -translate-y-1/2 text-[#D2B48C]"></i>
-                <input type="text" placeholder="搜尋標題、標籤或內容..." class="w-full pl-12 pr-4 py-3 bg-white border border-[#F5EBE0] rounded-2xl shadow-sm focus:outline-none focus:ring-2 focus:ring-[#D2B48C] transition-all">
+                <input id="search-input" type="text" placeholder="搜尋標題或內容..." class="w-full pl-12 pr-4 py-3 bg-white border border-[#F5EBE0] rounded-2xl shadow-sm focus:outline-none focus:ring-2 focus:ring-[#D2B48C] transition-all">
             </div>
 
             <div id="tabs-container" class="flex space-x-2 overflow-x-auto no-scrollbar pb-2">
-                <!-- Tabs rendered by JS -->
+                <!-- 這裡會由 JS 渲染 Tabs -->
             </div>
         </div>
 
-        <!-- Items Grid -->
         <div id="items-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
-            <!-- Loading state -->
             <div class="col-span-full py-20 text-center">
-                <div class="animate-pulse text-[#D2B48C]">載入靈感中...</div>
+                <div class="inline-block animate-spin rounded-full h-8 w-8 border-4 border-[#D2B48C] border-t-transparent mb-4"></div>
+                <div class="text-[#D2B48C] font-medium">連線至雲端資料庫...</div>
             </div>
         </div>
     </main>
 
-    <!-- Floating Add Button -->
-    <button onclick="window.showAddModal()" class="fixed bottom-8 right-6 w-14 h-14 bg-[#A67B5B] text-white rounded-full shadow-lg flex items-center justify-center text-2xl z-50 hover:scale-105 active:scale-95 transition-transform safe-bottom">
+    <button onclick="window.showAddModal()" class="fixed bottom-8 right-6 w-14 h-14 bg-[#A67B5B] text-white rounded-full shadow-lg flex items-center justify-center text-2xl z-50 active:scale-90 transition-transform safe-bottom">
         <i class="fas fa-plus"></i>
     </button>
 
-    <!-- Add Modal -->
+    <!-- 新增靈感彈窗 -->
     <div id="add-modal" class="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/40 hidden backdrop-blur-sm">
-        <div class="bg-white w-full max-w-md rounded-3xl p-8 shadow-2xl">
+        <div class="bg-white w-full max-w-md rounded-3xl p-8 shadow-2xl animate-fadeIn">
             <h2 class="text-2xl font-bold mb-6 flex items-center">
                 <span class="mr-2">📝</span> 新增靈感
             </h2>
             <form onsubmit="window.submitAdd(event)" class="space-y-4">
                 <div>
-                    <label class="block text-xs font-bold text-[#8B7355] mb-1 ml-1 uppercase">標題</label>
+                    <label class="block text-xs font-bold text-[#8B7355] mb-1 uppercase">標題</label>
                     <input name="title" required type="text" placeholder="例如：超夢幻杯子蛋糕食譜" class="w-full px-4 py-3 bg-[#FAF7F2] border border-[#F5EBE0] rounded-xl focus:outline-none focus:border-[#D2B48C]">
                 </div>
                 <div>
-                    <label class="block text-xs font-bold text-[#8B7355] mb-1 ml-1 uppercase">原文網址</label>
-                    <input name="url" required type="url" placeholder="貼上 IG 或 Threads 連結" class="w-full px-4 py-3 bg-[#FAF7F2] border border-[#F5EBE0] rounded-xl focus:outline-none focus:border-[#D2B48C]">
+                    <label class="block text-xs font-bold text-[#8B7355] mb-1 uppercase">連結 (URL)</label>
+                    <input name="url" required type="url" placeholder="貼上 IG、Threads 或網頁連結" class="w-full px-4 py-3 bg-[#FAF7F2] border border-[#F5EBE0] rounded-xl focus:outline-none focus:border-[#D2B48C]">
                 </div>
                 <div>
-                    <label class="block text-xs font-bold text-[#8B7355] mb-1 ml-1 uppercase">分類</label>
+                    <label class="block text-xs font-bold text-[#8B7355] mb-1 uppercase">分類</label>
                     <select name="categoryId" class="w-full px-4 py-3 bg-[#FAF7F2] border border-[#F5EBE0] rounded-xl focus:outline-none focus:border-[#D2B48C]">
-                        <!-- Options by JS -->
                     </select>
                 </div>
                 <div>
-                    <label class="block text-xs font-bold text-[#8B7355] mb-1 ml-1 uppercase">筆記</label>
-                    <textarea name="note" rows="3" placeholder="寫下為什麼想收藏它..." class="w-full px-4 py-3 bg-[#FAF7F2] border border-[#F5EBE0] rounded-xl focus:outline-none focus:border-[#D2B48C]"></textarea>
+                    <label class="block text-xs font-bold text-[#8B7355] mb-1 uppercase">小筆記</label>
+                    <textarea name="note" rows="3" placeholder="隨手記下重點..." class="w-full px-4 py-3 bg-[#FAF7F2] border border-[#F5EBE0] rounded-xl focus:outline-none focus:border-[#D2B48C]"></textarea>
                 </div>
                 <div class="flex space-x-3 pt-4">
                     <button type="button" onclick="window.hideAddModal()" class="flex-1 py-3 text-[#A67B5B] font-bold border border-[#F5EBE0] rounded-xl">取消</button>
-                    <button type="submit" class="flex-1 py-3 bg-[#A67B5B] text-white font-bold rounded-xl shadow-md">儲存靈感</button>
+                    <button type="submit" class="flex-1 py-3 bg-[#A67B5B] text-white font-bold rounded-xl shadow-md active:opacity-80">儲存靈感</button>
                 </div>
             </form>
         </div>
     </div>
 
-    <!-- Settings Modal (Management) -->
+    <!-- 管理分類彈窗 -->
     <div id="settings-modal" class="fixed inset-0 z-[60] flex items-center justify-center p-4 bg-black/40 hidden backdrop-blur-sm">
-        <div class="bg-white w-full max-w-md rounded-3xl p-8 shadow-2xl">
+        <div class="bg-white w-full max-w-md rounded-3xl p-8 shadow-2xl animate-fadeIn">
             <div class="flex justify-between items-center mb-6">
                 <h2 class="text-xl font-bold text-[#4A3728]">管理分類</h2>
                 <button onclick="window.addCat()" class="text-sm px-3 py-1 bg-[#F5EBE0] text-[#A67B5B] rounded-lg font-bold">+ 新增</button>
             </div>
-            <div id="edit-category-list" class="space-y-3 max-h-96 overflow-y-auto mb-6">
-                <!-- List by JS -->
+            <div id="edit-category-list" class="space-y-3 max-h-80 overflow-y-auto mb-6 no-scrollbar">
             </div>
-            <button onclick="window.toggleSettings()" class="w-full py-3 bg-[#A67B5B] text-white font-bold rounded-xl">完成</button>
+            <button onclick="window.toggleSettings()" class="w-full py-3 bg-[#A67B5B] text-white font-bold rounded-xl shadow-md">完成</button>
         </div>
     </div>
 
