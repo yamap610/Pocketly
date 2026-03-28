@@ -1,0 +1,1024 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>M.Y. 靈感收納箱 🤎</title>
+    <!-- Tailwind CSS -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- FontAwesome for Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts: Noto Sans TC -->
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@400;500;700&display=swap" rel="stylesheet">
+    
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        milktea: {
+                            50: '#fdfbf7',  /* 極淺奶茶底色 */
+                            100: '#f6f0e6',
+                            200: '#eee3cf',
+                            300: '#e1cdb0',
+                            400: '#d2b48c', /* 經典奶茶 */
+                            500: '#c29b68',
+                            600: '#b48455',
+                            700: '#966a46',
+                            800: '#7a573b', /* 深焙文字色 */
+                            900: '#644732',
+                        }
+                    },
+                    fontFamily: {
+                        sans: ['"Noto Sans TC"', 'sans-serif'],
+                    }
+                }
+            }
+        }
+    </script>
+    <style>
+        body {
+            background-color: #fdfbf7;
+            color: #644732;
+            -webkit-tap-highlight-color: transparent;
+        }
+        /* 隱藏滾動條但保持可滾動 */
+        ::-webkit-scrollbar {
+            width: 6px;
+            height: 6px;
+        }
+        ::-webkit-scrollbar-track {
+            background: transparent;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: #e1cdb0;
+            border-radius: 10px;
+        }
+        /* 瀑布流排版 (Masonry) */
+        .masonry-grid {
+            column-count: 2;
+            column-gap: 1rem;
+        }
+        @media (max-width: 640px) {
+            .masonry-grid {
+                column-count: 2; /* 手機版也是雙欄，像 IG 探索 */
+                column-gap: 0.75rem;
+            }
+        }
+        .masonry-item {
+            break-inside: avoid;
+            margin-bottom: 1rem;
+        }
+        @media (max-width: 640px) {
+            .masonry-item {
+                margin-bottom: 0.75rem;
+            }
+        }
+        /* 溫柔的卡片陰影與過渡效果 */
+        .card-shadow {
+            box-shadow: 0 4px 20px rgba(150, 106, 70, 0.06);
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        .card-shadow:active {
+            transform: scale(0.98);
+        }
+        /* 浮動按鈕動畫 */
+        .fab-button {
+            box-shadow: 0 4px 15px rgba(194, 155, 104, 0.4);
+        }
+        /* 圖片佔位符 */
+        .img-placeholder {
+            background: repeating-linear-gradient(
+                45deg,
+                #f6f0e6,
+                #f6f0e6 10px,
+                #fdfbf7 10px,
+                #fdfbf7 20px
+            );
+        }
+    </style>
+</head>
+<body class="font-sans antialiased min-h-screen pb-24">
+
+    <!-- 頂部導覽列 -->
+    <header class="sticky top-0 z-30 bg-milktea-50/90 backdrop-blur-md border-b border-milktea-200 shadow-sm">
+        <div class="max-w-5xl mx-auto px-4 py-3">
+            <div class="flex justify-between items-center mb-3">
+                <h1 class="text-xl font-bold text-milktea-800 flex items-center gap-2">
+                    <i class="fa-solid fa-mug-hot text-milktea-500"></i>
+                    靈感收納箱
+                </h1>
+                <div class="flex gap-3">
+                    <button onclick="openModal('backupModal')" class="w-10 h-10 rounded-full bg-milktea-100 text-milktea-700 flex items-center justify-center hover:bg-milktea-200 transition">
+                        <i class="fa-solid fa-cloud-arrow-down"></i>
+                    </button>
+                    <button onclick="openModal('categoryEditModal')" class="w-10 h-10 rounded-full bg-milktea-100 text-milktea-700 flex items-center justify-center hover:bg-milktea-200 transition">
+                        <i class="fa-solid fa-folder-tree"></i>
+                    </button>
+                </div>
+            </div>
+            
+            <!-- 搜尋框 -->
+            <div class="relative">
+                <i class="fa-solid fa-magnifying-glass absolute left-4 top-1/2 transform -translate-y-1/2 text-milktea-400"></i>
+                <input type="text" id="searchInput" placeholder="搜尋標題、標籤或內容..." 
+                    class="w-full bg-white border border-milktea-200 rounded-full py-2 pl-11 pr-4 text-sm focus:outline-none focus:ring-2 focus:ring-milktea-300 focus:border-transparent transition shadow-inner text-milktea-800 placeholder-milktea-400">
+            </div>
+        </div>
+    </header>
+
+    <!-- 分類標籤滑動區 -->
+    <nav class="max-w-5xl mx-auto px-4 py-4">
+        <div class="flex overflow-x-auto gap-2 pb-2 scrollbar-hide" id="categoryNav">
+            <!-- 動態生成分類按鈕 -->
+        </div>
+    </nav>
+
+    <!-- 主要內容區 (瀑布流) -->
+    <main class="max-w-5xl mx-auto px-4">
+        <!-- 狀態提示區 -->
+        <div id="loadingIndicator" class="text-center py-10 text-milktea-500 hidden">
+            <i class="fa-solid fa-spinner fa-spin text-2xl mb-2"></i>
+            <p class="text-sm">正在讀取靈感中...</p>
+        </div>
+        <div id="emptyState" class="text-center py-16 hidden">
+            <div class="w-24 h-24 bg-milktea-100 rounded-full flex items-center justify-center mx-auto mb-4 text-milktea-400 text-4xl">
+                <i class="fa-regular fa-folder-open"></i>
+            </div>
+            <h3 class="text-lg font-medium text-milktea-700 mb-1">這裡還是空的唷</h3>
+            <p class="text-sm text-milktea-500">點擊右下角的按鈕，開始收藏妳的第一個靈感吧！</p>
+        </div>
+
+        <!-- 卡片網格 -->
+        <div class="masonry-grid" id="bookmarksContainer">
+            <!-- 動態生成卡片 -->
+        </div>
+    </main>
+
+    <!-- 右下角浮動新增按鈕 -->
+    <button onclick="openAddModal()" class="fab-button fixed bottom-6 right-6 w-14 h-14 bg-milktea-600 text-white rounded-full flex items-center justify-center text-2xl hover:bg-milktea-700 hover:scale-105 transition-all z-40">
+        <i class="fa-solid fa-plus"></i>
+    </button>
+
+    <!-- ================= 模態框 (Modals) ================= -->
+
+    <!-- 1. 新增/編輯收藏 Modal -->
+    <div id="addModal" class="fixed inset-0 bg-milktea-900/40 backdrop-blur-sm z-50 hidden opacity-0 transition-opacity flex items-end sm:items-center justify-center">
+        <div class="bg-white w-full sm:w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl max-h-[90vh] flex flex-col shadow-2xl transform translate-y-full sm:translate-y-0 transition-transform duration-300" id="addModalContent">
+            
+            <div class="flex justify-between items-center p-5 border-b border-milktea-100">
+                <h2 class="text-lg font-bold text-milktea-800" id="addModalTitle">✨ 新增靈感</h2>
+                <button onclick="closeModal('addModal')" class="text-milktea-400 hover:text-milktea-600 w-8 h-8 flex items-center justify-center rounded-full bg-milktea-50">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            
+            <div class="p-5 overflow-y-auto custom-scrollbar flex-1">
+                <!-- 圖片上傳/貼上區 -->
+                <div class="mb-5">
+                    <label class="block text-sm font-medium text-milktea-700 mb-2">截圖或圖片 (可直接貼上 📋)</label>
+                    <div id="imageDropZone" class="border-2 border-dashed border-milktea-300 rounded-xl p-4 text-center cursor-pointer hover:bg-milktea-50 transition relative overflow-hidden bg-milktea-50/50">
+                        <input type="file" id="imageInput" accept="image/*" class="hidden">
+                        <div id="imagePreviewContainer" class="hidden">
+                            <img id="imagePreview" src="" alt="預覽" class="w-full h-auto rounded-lg object-cover max-h-48">
+                            <button type="button" onclick="clearImage(event)" class="absolute top-2 right-2 bg-black/50 text-white rounded-full w-8 h-8 flex items-center justify-center backdrop-blur-sm">
+                                <i class="fa-solid fa-trash-can text-sm"></i>
+                            </button>
+                        </div>
+                        <div id="imagePlaceholder" class="py-4">
+                            <i class="fa-regular fa-image text-3xl text-milktea-400 mb-2"></i>
+                            <p class="text-sm text-milktea-600">點擊上傳圖檔<br><span class="text-xs text-milktea-400">或直接在此畫面按下貼上 (Ctrl+V)</span></p>
+                        </div>
+                    </div>
+                    <canvas id="imageCanvas" class="hidden"></canvas>
+                </div>
+
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm font-medium text-milktea-700 mb-1">標題 <span class="text-red-400">*</span></label>
+                        <input type="text" id="itemTitle" placeholder="這篇文章的重點是什麼？" class="w-full border border-milktea-200 rounded-lg px-3 py-2 focus:ring-2 focus:ring-milktea-300 focus:outline-none bg-white">
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-milktea-700 mb-1">原始連結 (選填)</label>
+                        <input type="url" id="itemUrl" placeholder="https://instagram.com/..." class="w-full border border-milktea-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-milktea-300 focus:outline-none bg-white">
+                    </div>
+
+                    <div>
+                        <label class="block text-sm font-medium text-milktea-700 mb-1">分類 <span class="text-red-400">*</span></label>
+                        <select id="itemCategory" class="w-full border border-milktea-200 rounded-lg px-3 py-2 focus:ring-2 focus:ring-milktea-300 focus:outline-none bg-white appearance-none">
+                            <!-- 動態載入分類 -->
+                        </select>
+                    </div>
+
+                    <div>
+                        <div class="flex justify-between items-end mb-1">
+                            <label class="block text-sm font-medium text-milktea-700">標籤 (逗號分隔)</label>
+                            <button type="button" onclick="generateAITags()" id="aiTagBtn" class="text-xs bg-gradient-to-r from-milktea-400 to-milktea-500 text-white px-2 py-1 rounded-md hover:from-milktea-500 hover:to-milktea-600 shadow-sm flex items-center gap-1">
+                                <i class="fa-solid fa-wand-magic-sparkles"></i> AI 幫貼
+                            </button>
+                        </div>
+                        <input type="text" id="itemTags" placeholder="例如：日系, 收納, 靈感" class="w-full border border-milktea-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-milktea-300 focus:outline-none bg-white">
+                    </div>
+                    
+                    <div>
+                        <label class="block text-sm font-medium text-milktea-700 mb-1">筆記/心得 (選填)</label>
+                        <textarea id="itemNotes" rows="3" placeholder="寫下妳喜歡的原因..." class="w-full border border-milktea-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-milktea-300 focus:outline-none bg-white resize-none"></textarea>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="p-5 border-t border-milktea-100 flex gap-3 bg-white sm:rounded-b-3xl">
+                <button onclick="closeModal('addModal')" class="flex-1 py-2.5 rounded-xl border border-milktea-300 text-milktea-700 font-medium hover:bg-milktea-50 transition">取消</button>
+                <button onclick="saveBookmark()" id="saveBtn" class="flex-1 py-2.5 rounded-xl bg-milktea-600 text-white font-medium hover:bg-milktea-700 transition shadow-md flex justify-center items-center gap-2">
+                    <i class="fa-solid fa-check"></i> 儲存
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- 2. 分類編輯 Modal -->
+    <div id="categoryEditModal" class="fixed inset-0 bg-milktea-900/40 backdrop-blur-sm z-50 hidden opacity-0 transition-opacity flex items-center justify-center p-4">
+        <div class="bg-white w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[80vh]">
+            <div class="p-5 border-b border-milktea-100 flex justify-between items-center bg-milktea-50">
+                <h2 class="text-lg font-bold text-milktea-800"><i class="fa-solid fa-folder-gear mr-2"></i>管理分類</h2>
+                <button onclick="closeModal('categoryEditModal')" class="text-milktea-400 hover:text-milktea-600">
+                    <i class="fa-solid fa-xmark text-xl"></i>
+                </button>
+            </div>
+            <div class="p-5 overflow-y-auto flex-1 bg-white">
+                <div class="flex gap-2 mb-4">
+                    <input type="text" id="newCategoryIcon" placeholder="🎨" class="w-12 text-center border border-milktea-200 rounded-lg px-2 py-2 focus:ring-2 focus:ring-milktea-300 outline-none text-lg">
+                    <input type="text" id="newCategoryName" placeholder="新分類名稱" class="flex-1 border border-milktea-200 rounded-lg px-3 py-2 focus:ring-2 focus:ring-milktea-300 outline-none text-sm">
+                    <button onclick="addCategory()" class="bg-milktea-500 text-white px-3 py-2 rounded-lg hover:bg-milktea-600 transition"><i class="fa-solid fa-plus"></i></button>
+                </div>
+                <ul id="categoryEditList" class="space-y-2">
+                    <!-- 動態載入分類清單供編輯 -->
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <!-- 3. 備份與同步 Modal -->
+    <div id="backupModal" class="fixed inset-0 bg-milktea-900/40 backdrop-blur-sm z-50 hidden opacity-0 transition-opacity flex items-center justify-center p-4">
+        <div class="bg-white w-full max-w-sm rounded-3xl shadow-2xl overflow-hidden">
+            <div class="p-5 border-b border-milktea-100 flex justify-between items-center bg-milktea-50">
+                <h2 class="text-lg font-bold text-milktea-800"><i class="fa-solid fa-cloud-arrow-down mr-2"></i>備份與同步</h2>
+                <button onclick="closeModal('backupModal')" class="text-milktea-400 hover:text-milktea-600">
+                    <i class="fa-solid fa-xmark text-xl"></i>
+                </button>
+            </div>
+            <div class="p-6 space-y-6">
+                <div>
+                    <h3 class="text-sm font-bold text-milktea-800 mb-2 border-b border-milktea-100 pb-1">雲端自動存檔狀態</h3>
+                    <p class="text-xs text-milktea-600 mb-2">系統已自動將資料綁定於您當前設備的瀏覽器。若要跨設備同步，請使用下方的匯出/匯入功能。</p>
+                    <div class="bg-milktea-50 rounded-lg p-2 text-xs font-mono text-center text-milktea-400 truncate" id="cloudSyncId">
+                        UID: 讀取中...
+                    </div>
+                </div>
+
+                <div>
+                    <h3 class="text-sm font-bold text-milktea-800 mb-2 border-b border-milktea-100 pb-1">實體檔案備份 (JSON)</h3>
+                    <div class="grid grid-cols-2 gap-3">
+                        <button onclick="exportData()" class="py-3 px-4 bg-milktea-100 text-milktea-700 rounded-xl hover:bg-milktea-200 transition text-sm font-medium flex flex-col items-center gap-1">
+                            <i class="fa-solid fa-download text-lg"></i>
+                            匯出備份
+                        </button>
+                        <button onclick="document.getElementById('importFile').click()" class="py-3 px-4 bg-milktea-100 text-milktea-700 rounded-xl hover:bg-milktea-200 transition text-sm font-medium flex flex-col items-center gap-1">
+                            <i class="fa-solid fa-upload text-lg"></i>
+                            匯入資料
+                        </button>
+                        <input type="file" id="importFile" accept=".json" class="hidden" onchange="importData(event)">
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- 訊息提示 Toast -->
+    <div id="toast" class="fixed top-5 left-1/2 transform -translate-x-1/2 bg-gray-800 text-white px-5 py-2.5 rounded-full shadow-lg z-[60] text-sm font-medium transition-all duration-300 opacity-0 pointer-events-none translate-y-[-20px] flex items-center gap-2">
+        <i class="fa-solid fa-circle-info"></i> <span id="toastMsg">訊息</span>
+    </div>
+
+    <!-- 圖片點擊放大 Modal -->
+    <div id="imageViewerModal" class="fixed inset-0 bg-black/90 z-[70] hidden opacity-0 transition-opacity flex items-center justify-center p-2" onclick="closeImageViewer()">
+        <button class="absolute top-4 right-4 text-white/70 hover:text-white w-10 h-10 flex items-center justify-center rounded-full bg-black/50 backdrop-blur-sm z-10">
+            <i class="fa-solid fa-xmark text-xl"></i>
+        </button>
+        <img id="viewerImage" src="" class="max-w-full max-h-full object-contain rounded-md" onclick="event.stopPropagation()">
+    </div>
+
+    <!-- Firebase & Main Script -->
+    <script type="module">
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, collection, onSnapshot, doc, setDoc, addDoc, updateDoc, deleteDoc, serverTimestamp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+
+        // ================= 全域設定與狀態 =================
+        const apiKey = ""; // Gemini API Key (系統自動注入)
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        
+        // 預設分類
+        const defaultCategories = [
+            { id: 'c1', name: '生活靈感', icon: '💡' },
+            { id: 'c2', name: '食譜料理', icon: '🍳' },
+            { id: 'c3', name: '育兒親子', icon: '👶' },
+            { id: 'c4', name: '手作靈感', icon: '🧶' },
+            { id: 'c5', name: '旅遊相關', icon: '✈️' },
+            { id: 'c6', name: '好物推薦', icon: '🎁' }
+        ];
+
+        let app, auth, db, currentUser = null;
+        let bookmarks = [];
+        let categories = [];
+        let currentFilter = 'all';
+        let searchQuery = '';
+        let currentEditingId = null;
+        let unsubscribeBookmarks = null;
+        let unsubscribeCategories = null;
+
+        // ================= UI 工具函式 =================
+        window.showToast = (msg, type = 'info') => {
+            const toast = document.getElementById('toast');
+            document.getElementById('toastMsg').innerText = msg;
+            
+            // 顏色設定
+            toast.className = `fixed top-5 left-1/2 transform -translate-x-1/2 px-5 py-2.5 rounded-full shadow-lg z-[60] text-sm font-medium transition-all duration-300 flex items-center gap-2 ${
+                type === 'success' ? 'bg-green-600 text-white' : 
+                type === 'error' ? 'bg-red-500 text-white' : 
+                'bg-milktea-800 text-white'
+            }`;
+            
+            toast.classList.remove('opacity-0', 'translate-y-[-20px]');
+            toast.classList.add('opacity-100', 'translate-y-0');
+            
+            setTimeout(() => {
+                toast.classList.remove('opacity-100', 'translate-y-0');
+                toast.classList.add('opacity-0', 'translate-y-[-20px]');
+            }, 3000);
+        };
+
+        window.openModal = (modalId) => {
+            const modal = document.getElementById(modalId);
+            modal.classList.remove('hidden');
+            // Trigger reflow
+            void modal.offsetWidth;
+            modal.classList.remove('opacity-0');
+            
+            if(modalId === 'addModal') {
+                const content = document.getElementById('addModalContent');
+                content.classList.remove('translate-y-full');
+            }
+        };
+
+        window.closeModal = (modalId) => {
+            const modal = document.getElementById(modalId);
+            modal.classList.add('opacity-0');
+            
+            if(modalId === 'addModal') {
+                const content = document.getElementById('addModalContent');
+                content.classList.add('translate-y-full');
+            }
+            
+            setTimeout(() => {
+                modal.classList.add('hidden');
+                if(modalId === 'addModal') resetAddForm();
+            }, 300);
+        };
+
+        // ================= 圖片處理與剪貼簿 =================
+        const imageInput = document.getElementById('imageInput');
+        const imageDropZone = document.getElementById('imageDropZone');
+        const imagePreviewContainer = document.getElementById('imagePreviewContainer');
+        const imagePreview = document.getElementById('imagePreview');
+        const imagePlaceholder = document.getElementById('imagePlaceholder');
+        const imageCanvas = document.getElementById('imageCanvas');
+        let currentImageBase64 = null;
+
+        imageDropZone.addEventListener('click', (e) => {
+            if(e.target.closest('button')) return; // 防止點擊刪除按鈕觸發上傳
+            imageInput.click();
+        });
+
+        imageInput.addEventListener('change', (e) => {
+            if(e.target.files && e.target.files[0]) {
+                processImageFile(e.target.files[0]);
+            }
+        });
+
+        // 監聽全域剪貼簿貼上事件
+        window.addEventListener('paste', (e) => {
+            // 只有在新增彈窗打開時才處理圖片貼上
+            const addModal = document.getElementById('addModal');
+            if(addModal.classList.contains('hidden')) return;
+
+            // 如果焦點在輸入框，且貼上的內容包含純文字，則讓瀏覽器預設處理
+            const activeTag = document.activeElement.tagName.toLowerCase();
+            if (activeTag === 'input' || activeTag === 'textarea') {
+                const hasText = e.clipboardData.getData('text/plain') !== '';
+                // 如果是貼文字到輸入框，就不處理圖片 (避免衝突)
+                if(hasText) return; 
+            }
+
+            const items = e.clipboardData.items;
+            for (let i = 0; i < items.length; i++) {
+                if (items[i].type.indexOf('image') !== -1) {
+                    e.preventDefault();
+                    const blob = items[i].getAsFile();
+                    processImageFile(blob);
+                    showToast('已貼上圖片！', 'success');
+                    break;
+                }
+            }
+        });
+
+        function processImageFile(file) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                compressImage(e.target.result);
+            };
+            reader.readAsDataURL(file);
+        }
+
+        function compressImage(dataUrl) {
+            const img = new Image();
+            img.onload = () => {
+                const ctx = imageCanvas.getContext('2d');
+                // 最大寬度 800px 以節省 Firestore 空間 (單文檔 1MB 限制)
+                const maxWidth = 800; 
+                let width = img.width;
+                let height = img.height;
+
+                if (width > maxWidth) {
+                    height = Math.round((height * maxWidth) / width);
+                    width = maxWidth;
+                }
+
+                imageCanvas.width = width;
+                imageCanvas.height = height;
+                
+                // 畫上白色背景 (防止透明 PNG 變黑)
+                ctx.fillStyle = '#FFFFFF';
+                ctx.fillRect(0, 0, width, height);
+                ctx.drawImage(img, 0, 0, width, height);
+
+                // 轉換為 JPEG (品質 0.7)
+                const compressedBase64 = imageCanvas.toDataURL('image/jpeg', 0.7);
+                
+                // 檢查大小，如果太大給警告
+                if(compressedBase64.length > 800000) {
+                    showToast('圖片檔案過大，建議更換圖片', 'error');
+                }
+
+                currentImageBase64 = compressedBase64;
+                imagePreview.src = compressedBase64;
+                imagePlaceholder.classList.add('hidden');
+                imagePreviewContainer.classList.remove('hidden');
+            };
+            img.src = dataUrl;
+        }
+
+        window.clearImage = (e) => {
+            e.stopPropagation();
+            currentImageBase64 = null;
+            imageInput.value = '';
+            imagePreview.src = '';
+            imagePlaceholder.classList.remove('hidden');
+            imagePreviewContainer.classList.add('hidden');
+        };
+
+        window.openImageViewer = (src) => {
+            if(!src) return;
+            document.getElementById('viewerImage').src = src;
+            const viewer = document.getElementById('imageViewerModal');
+            viewer.classList.remove('hidden');
+            void viewer.offsetWidth;
+            viewer.classList.remove('opacity-0');
+        };
+
+        window.closeImageViewer = () => {
+            const viewer = document.getElementById('imageViewerModal');
+            viewer.classList.add('opacity-0');
+            setTimeout(() => viewer.classList.add('hidden'), 300);
+        };
+
+        // ================= 核心邏輯：AI 標籤 (Gemini) =================
+        window.generateAITags = async () => {
+            const title = document.getElementById('itemTitle').value.trim();
+            const notes = document.getElementById('itemNotes').value.trim();
+            
+            if(!title && !notes) {
+                showToast('請先填寫標題或筆記，AI 才能分析唷！', 'error');
+                return;
+            }
+
+            const btn = document.getElementById('aiTagBtn');
+            const originalContent = btn.innerHTML;
+            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 思考中...';
+            btn.disabled = true;
+
+            const promptText = `請根據以下社群貼文的標題與筆記，產生 3 到 5 個適合的分類標籤（繁體中文），每個標籤簡短有力（2-5個字），不要加井字號。
+標題: ${title}
+筆記: ${notes}`;
+
+            const systemPrompt = "你是一個社群媒體管理專家，擅長為文章抓出精準、日系或生活化的關鍵字標籤。";
+
+            const payload = {
+                contents: [{ parts: [{ text: promptText }] }],
+                systemInstruction: { parts: [{ text: systemPrompt }] },
+                generationConfig: { 
+                    responseMimeType: "application/json", 
+                    responseSchema: { 
+                        type: "ARRAY", 
+                        items: { type: "STRING" } 
+                    } 
+                }
+            };
+
+            // Exponential Backoff Retry
+            const maxRetries = 3;
+            let attempt = 0;
+            let success = false;
+            let resultTags = [];
+
+            while (attempt < maxRetries && !success) {
+                try {
+                    const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-09-2025:generateContent?key=${apiKey}`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(payload)
+                    });
+
+                    if (!response.ok) throw new Error(`HTTP error! status: ${response.status}`);
+                    
+                    const data = await response.json();
+                    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+                    if(text) {
+                        resultTags = JSON.parse(text);
+                        success = true;
+                    } else {
+                        throw new Error("Invalid API response format");
+                    }
+                } catch (error) {
+                    attempt++;
+                    if (attempt >= maxRetries) {
+                        console.error("AI 標籤產生失敗:", error);
+                        showToast('AI 產生失敗，請稍後再試', 'error');
+                        break;
+                    }
+                    await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
+                }
+            }
+
+            if(success && resultTags.length > 0) {
+                const currentInput = document.getElementById('itemTags');
+                const existingTags = currentInput.value.split(',').map(t => t.trim()).filter(t => t);
+                const mergedTags = [...new Set([...existingTags, ...resultTags])].join(', ');
+                currentInput.value = mergedTags;
+                showToast('✨ AI 標籤已自動填入！', 'success');
+            }
+
+            btn.innerHTML = originalContent;
+            btn.disabled = false;
+        };
+
+
+        // ================= 核心邏輯：Firebase =================
+        function initFirebase() {
+            if(!firebaseConfig.projectId) {
+                console.error("Firebase config not found. App will run in memory only for demo.");
+                // 初始化為純本地展示模式
+                initLocalDemoMode();
+                return;
+            }
+
+            app = initializeApp(firebaseConfig);
+            auth = getAuth(app);
+            db = getFirestore(app);
+
+            const initAuth = async () => {
+                try {
+                    if (typeof __initial_auth_token !== 'undefined' && __initial_auth_token) {
+                        await signInWithCustomToken(auth, __initial_auth_token);
+                    } else {
+                        await signInAnonymously(auth);
+                    }
+                } catch(e) {
+                    console.error("Auth error:", e);
+                    showToast('登入系統發生異常', 'error');
+                }
+            };
+
+            initAuth();
+
+            onAuthStateChanged(auth, (user) => {
+                currentUser = user;
+                if (user) {
+                    document.getElementById('cloudSyncId').innerText = `目前帳戶識別碼: ${user.uid.substring(0,8)}...`;
+                    setupRealtimeListeners();
+                }
+            });
+        }
+
+        function setupRealtimeListeners() {
+            if (!currentUser) return;
+            document.getElementById('loadingIndicator').classList.remove('hidden');
+
+            const uid = currentUser.uid;
+            
+            // 監聽分類
+            const catRef = collection(db, 'artifacts', appId, 'users', uid, 'categories');
+            if(unsubscribeCategories) unsubscribeCategories();
+            unsubscribeCategories = onSnapshot(catRef, (snapshot) => {
+                if(snapshot.empty && categories.length === 0) {
+                    // 初始化預設分類
+                    defaultCategories.forEach(async (cat) => {
+                        await setDoc(doc(db, 'artifacts', appId, 'users', uid, 'categories', cat.id), cat);
+                    });
+                } else {
+                    categories = [];
+                    snapshot.forEach(doc => {
+                        categories.push({ docId: doc.id, ...doc.data() });
+                    });
+                    // 按原始預設順序或名稱排序
+                    categories.sort((a,b) => a.name.localeCompare(b.name));
+                    renderCategoryNav();
+                    renderCategoryDropdown();
+                    renderCategoryEditList();
+                }
+            }, (error) => console.error("類別讀取失敗", error));
+
+            // 監聽書籤
+            const bookmarksRef = collection(db, 'artifacts', appId, 'users', uid, 'bookmarks');
+            if(unsubscribeBookmarks) unsubscribeBookmarks();
+            unsubscribeBookmarks = onSnapshot(bookmarksRef, (snapshot) => {
+                bookmarks = [];
+                snapshot.forEach(doc => {
+                    bookmarks.push({ docId: doc.id, ...doc.data() });
+                });
+                // 手動按時間降序排序 (取代 orderBy 以符合規則2)
+                bookmarks.sort((a, b) => {
+                    const timeA = a.createdAt?.toMillis ? a.createdAt.toMillis() : (a.createdAt || 0);
+                    const timeB = b.createdAt?.toMillis ? b.createdAt.toMillis() : (b.createdAt || 0);
+                    return timeB - timeA;
+                });
+                
+                document.getElementById('loadingIndicator').classList.add('hidden');
+                renderBookmarks();
+            }, (error) => {
+                console.error("書籤讀取失敗", error);
+                document.getElementById('loadingIndicator').classList.add('hidden');
+            });
+        }
+
+        // ================= CRUD 操作 =================
+        window.openAddModal = (docId = null) => {
+            currentEditingId = docId;
+            const titleEl = document.getElementById('addModalTitle');
+            
+            if(docId) {
+                titleEl.innerHTML = '✏️ 編輯靈感';
+                const item = bookmarks.find(b => b.docId === docId);
+                if(item) {
+                    document.getElementById('itemTitle').value = item.title || '';
+                    document.getElementById('itemUrl').value = item.url || '';
+                    document.getElementById('itemCategory').value = item.category || categories[0]?.id;
+                    document.getElementById('itemTags').value = (item.tags || []).join(', ');
+                    document.getElementById('itemNotes').value = item.notes || '';
+                    
+                    if(item.imageBase64) {
+                        currentImageBase64 = item.imageBase64;
+                        imagePreview.src = item.imageBase64;
+                        imagePlaceholder.classList.add('hidden');
+                        imagePreviewContainer.classList.remove('hidden');
+                    }
+                }
+            } else {
+                titleEl.innerHTML = '✨ 新增靈感';
+                resetAddForm();
+            }
+            openModal('addModal');
+        };
+
+        function resetAddForm() {
+            currentEditingId = null;
+            document.getElementById('itemTitle').value = '';
+            document.getElementById('itemUrl').value = '';
+            document.getElementById('itemTags').value = '';
+            document.getElementById('itemNotes').value = '';
+            if(categories.length > 0) document.getElementById('itemCategory').value = categories[0].id;
+            clearImage({stopPropagation:()=>{}});
+        }
+
+        window.saveBookmark = async () => {
+            if(!currentUser) { showToast('未登入系統，無法儲存', 'error'); return; }
+            
+            const title = document.getElementById('itemTitle').value.trim();
+            const category = document.getElementById('itemCategory').value;
+            if(!title) { showToast('標題是必填的唷！', 'error'); return; }
+
+            const btn = document.getElementById('saveBtn');
+            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> 儲存中...';
+            btn.disabled = true;
+
+            const url = document.getElementById('itemUrl').value.trim();
+            const tagsInput = document.getElementById('itemTags').value.trim();
+            const tags = tagsInput ? tagsInput.split(',').map(t => t.trim()).filter(t => t) : [];
+            const notes = document.getElementById('itemNotes').value.trim();
+
+            const data = {
+                title, url, category, tags, notes,
+                imageBase64: currentImageBase64,
+                updatedAt: serverTimestamp()
+            };
+
+            try {
+                if(currentEditingId) {
+                    await updateDoc(doc(db, 'artifacts', appId, 'users', currentUser.uid, 'bookmarks', currentEditingId), data);
+                    showToast('已成功更新！', 'success');
+                } else {
+                    data.createdAt = serverTimestamp();
+                    await addDoc(collection(db, 'artifacts', appId, 'users', currentUser.uid, 'bookmarks'), data);
+                    showToast('成功收藏新靈感！', 'success');
+                }
+                closeModal('addModal');
+            } catch(e) {
+                console.error("儲存失敗", e);
+                showToast('儲存失敗，請重試', 'error');
+            }
+
+            btn.innerHTML = '<i class="fa-solid fa-check"></i> 儲存';
+            btn.disabled = false;
+        };
+
+        window.deleteBookmark = async (docId, event) => {
+            event.stopPropagation();
+            if(!currentUser) return;
+            // iframe 中不能使用 confirm，改用自訂的簡單機制或直接刪除加復原(這裡為了簡潔直接刪除，實務上可做 modal)
+            try {
+                // 為了視覺體驗先將節點移除
+                const card = document.getElementById(`card-${docId}`);
+                if(card) {
+                    card.style.transform = 'scale(0.8)';
+                    card.style.opacity = '0';
+                    setTimeout(async () => {
+                        await deleteDoc(doc(db, 'artifacts', appId, 'users', currentUser.uid, 'bookmarks', docId));
+                        showToast('已刪除收藏');
+                    }, 200);
+                }
+            } catch(e) {
+                console.error(e);
+            }
+        };
+
+        // ================= 分類管理邏輯 =================
+        window.addCategory = async () => {
+            if(!currentUser) return;
+            const icon = document.getElementById('newCategoryIcon').value.trim() || '📂';
+            const name = document.getElementById('newCategoryName').value.trim();
+            if(!name) return;
+
+            const newId = 'c_' + Date.now();
+            try {
+                await setDoc(doc(db, 'artifacts', appId, 'users', currentUser.uid, 'categories', newId), {
+                    id: newId, name, icon
+                });
+                document.getElementById('newCategoryIcon').value = '';
+                document.getElementById('newCategoryName').value = '';
+            } catch(e) {
+                console.error(e);
+            }
+        };
+
+        window.deleteCategory = async (docId) => {
+            if(!currentUser) return;
+            // 檢查是否還有文章使用此分類
+            const inUse = bookmarks.some(b => b.category === categories.find(c => c.docId === docId)?.id);
+            if(inUse) {
+                showToast('此分類下還有文章，無法刪除唷！', 'error');
+                return;
+            }
+            try {
+                await deleteDoc(doc(db, 'artifacts', appId, 'users', currentUser.uid, 'categories', docId));
+            } catch(e) {
+                console.error(e);
+            }
+        };
+
+        window.setFilter = (catId) => {
+            currentFilter = catId;
+            renderCategoryNav();
+            renderBookmarks();
+        };
+
+        document.getElementById('searchInput').addEventListener('input', (e) => {
+            searchQuery = e.target.value.toLowerCase().trim();
+            renderBookmarks();
+        });
+
+        // ================= 渲染 UI =================
+        function renderCategoryNav() {
+            const nav = document.getElementById('categoryNav');
+            let html = `
+                <button onclick="setFilter('all')" class="whitespace-nowrap px-4 py-2 rounded-full text-sm font-medium transition-colors ${currentFilter === 'all' ? 'bg-milktea-600 text-white shadow-md' : 'bg-white text-milktea-600 border border-milktea-200 hover:bg-milktea-50'}">
+                    🌟 全部靈感
+                </button>
+            `;
+            
+            categories.forEach(cat => {
+                const isActive = currentFilter === cat.id;
+                html += `
+                    <button onclick="setFilter('${cat.id}')" class="whitespace-nowrap px-4 py-2 rounded-full text-sm font-medium transition-colors flex items-center gap-1 ${isActive ? 'bg-milktea-600 text-white shadow-md' : 'bg-white text-milktea-600 border border-milktea-200 hover:bg-milktea-50'}">
+                        <span>${cat.icon}</span> ${cat.name}
+                    </button>
+                `;
+            });
+            nav.innerHTML = html;
+        }
+
+        function renderCategoryDropdown() {
+            const select = document.getElementById('itemCategory');
+            select.innerHTML = categories.map(cat => 
+                `<option value="${cat.id}">${cat.icon} ${cat.name}</option>`
+            ).join('');
+        }
+
+        function renderCategoryEditList() {
+            const list = document.getElementById('categoryEditList');
+            list.innerHTML = categories.map(cat => `
+                <li class="flex justify-between items-center bg-milktea-50 px-3 py-2 rounded-lg">
+                    <span>${cat.icon} ${cat.name}</span>
+                    <button onclick="deleteCategory('${cat.docId}')" class="text-red-400 hover:text-red-600 w-8 h-8 flex items-center justify-center rounded-full hover:bg-red-50 transition">
+                        <i class="fa-solid fa-trash-can"></i>
+                    </button>
+                </li>
+            `).join('');
+        }
+
+        function renderBookmarks() {
+            const container = document.getElementById('bookmarksContainer');
+            const emptyState = document.getElementById('emptyState');
+            
+            // 篩選邏輯 (分類 + 搜尋)
+            let filtered = bookmarks;
+            
+            if(currentFilter !== 'all') {
+                filtered = filtered.filter(b => b.category === currentFilter);
+            }
+            
+            if(searchQuery) {
+                filtered = filtered.filter(b => {
+                    const titleMatch = (b.title || '').toLowerCase().includes(searchQuery);
+                    const notesMatch = (b.notes || '').toLowerCase().includes(searchQuery);
+                    const tagMatch = (b.tags || []).some(t => t.toLowerCase().includes(searchQuery));
+                    return titleMatch || notesMatch || tagMatch;
+                });
+            }
+
+            if(filtered.length === 0) {
+                container.innerHTML = '';
+                emptyState.classList.remove('hidden');
+                return;
+            }
+
+            emptyState.classList.add('hidden');
+            
+            let html = '';
+            filtered.forEach(item => {
+                const catInfo = categories.find(c => c.id === item.category) || { icon: '📌', name: '未分類' };
+                const tagsHtml = (item.tags || []).slice(0, 3).map(tag => 
+                    `<span class="inline-block bg-milktea-100 text-milktea-700 text-[10px] px-2 py-0.5 rounded border border-milktea-200 mr-1 mb-1">#${tag}</span>`
+                ).join('');
+                
+                // 卡片主體
+                html += `
+                    <div id="card-${item.docId}" class="masonry-item card-shadow bg-white rounded-2xl overflow-hidden cursor-pointer relative group transition-all duration-300" onclick="openAddModal('${item.docId}')">
+                        
+                        <!-- 刪除按鈕 (Hover 時顯示，手機版則常駐淡色) -->
+                        <button onclick="deleteBookmark('${item.docId}', event)" class="absolute top-2 right-2 w-8 h-8 bg-black/40 text-white rounded-full flex items-center justify-center backdrop-blur-sm opacity-100 sm:opacity-0 group-hover:opacity-100 transition z-10 hover:bg-red-500/80">
+                            <i class="fa-solid fa-trash-can text-sm"></i>
+                        </button>
+
+                        <!-- 圖片區 -->
+                        ${item.imageBase64 ? `
+                            <div class="w-full relative pt-[75%] overflow-hidden bg-milktea-50">
+                                <img src="${item.imageBase64}" class="absolute top-0 left-0 w-full h-full object-cover" loading="lazy" onclick="event.stopPropagation(); openImageViewer('${item.imageBase64}')">
+                            </div>
+                        ` : `
+                            <!-- 無圖片時顯示柔和漸層背景區塊 -->
+                            <div class="w-full h-20 img-placeholder opacity-60 flex items-center px-4">
+                                <span class="text-milktea-500/50 text-2xl"><i class="fa-solid fa-quote-left"></i></span>
+                            </div>
+                        `}
+
+                        <!-- 內容區 -->
+                        <div class="p-4">
+                            <div class="flex items-center gap-1.5 mb-2">
+                                <span class="text-xs bg-milktea-50 px-1.5 py-0.5 rounded text-milktea-600">${catInfo.icon} ${catInfo.name}</span>
+                            </div>
+                            
+                            <h3 class="font-bold text-milktea-900 text-[15px] leading-snug mb-2 line-clamp-2">${item.title}</h3>
+                            
+                            ${item.notes ? `<p class="text-xs text-milktea-600 line-clamp-2 mb-3 bg-milktea-50/50 p-2 rounded">${item.notes}</p>` : ''}
+                            
+                            ${tagsHtml ? `<div class="mt-auto pt-1">${tagsHtml}</div>` : ''}
+                            
+                            ${item.url ? `
+                                <a href="${item.url}" target="_blank" onclick="event.stopPropagation()" class="mt-3 block text-center text-xs text-milktea-500 bg-milktea-50 hover:bg-milktea-100 py-1.5 rounded-lg transition">
+                                    <i class="fa-solid fa-link"></i> 前往原文
+                                </a>
+                            ` : ''}
+                        </div>
+                    </div>
+                `;
+            });
+            
+            container.innerHTML = html;
+        }
+
+        // ================= 備份與匯出入邏輯 =================
+        window.exportData = () => {
+            const data = {
+                version: "1.0",
+                exportedAt: new Date().toISOString(),
+                categories: categories.map(c => {
+                    const { docId, ...rest } = c; // 移除內部 ID
+                    return rest;
+                }),
+                bookmarks: bookmarks.map(b => {
+                    const { docId, createdAt, updatedAt, ...rest } = b;
+                    return { ...rest, createdAt: createdAt?.toMillis ? createdAt.toMillis() : Date.now() };
+                })
+            };
+
+            const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(data, null, 2));
+            const dlAnchorElem = document.createElement('a');
+            dlAnchorElem.setAttribute("href", dataStr);
+            dlAnchorElem.setAttribute("download", `MY_Inspiration_Backup_${new Date().toISOString().slice(0,10)}.json`);
+            dlAnchorElem.click();
+            showToast('備份檔已下載！', 'success');
+        };
+
+        window.importData = async (event) => {
+            const file = event.target.files[0];
+            if(!file || !currentUser) return;
+
+            const reader = new FileReader();
+            reader.onload = async (e) => {
+                try {
+                    const data = JSON.parse(e.target.result);
+                    if(!data.bookmarks || !data.categories) throw new Error('檔案格式不符');
+
+                    document.getElementById('toastMsg').innerText = '資料匯入中，請稍候...';
+                    document.getElementById('toast').classList.remove('hidden', 'opacity-0', 'translate-y-[-20px]');
+                    document.getElementById('toast').classList.add('opacity-100', 'translate-y-0');
+
+                    // 匯入分類
+                    for(const cat of data.categories) {
+                        const id = cat.id || 'c_' + Date.now() + Math.random().toString().substr(2,5);
+                        await setDoc(doc(db, 'artifacts', appId, 'users', currentUser.uid, 'categories', id), { ...cat, id });
+                    }
+
+                    // 匯入書籤
+                    for(const b of data.bookmarks) {
+                        const newBookmark = { ...b };
+                        if(b.createdAt) newBookmark.createdAt = new Date(b.createdAt);
+                        newBookmark.updatedAt = serverTimestamp();
+                        await addDoc(collection(db, 'artifacts', appId, 'users', currentUser.uid, 'bookmarks'), newBookmark);
+                    }
+
+                    closeModal('backupModal');
+                    showToast('匯入完成！重新載入資料中...', 'success');
+                    // Reset input
+                    document.getElementById('importFile').value = '';
+                } catch(err) {
+                    console.error("匯入失敗", err);
+                    showToast('匯入失敗，請確認檔案格式', 'error');
+                }
+            };
+            reader.readAsText(file);
+        };
+
+        // 啟動應用
+        window.onload = () => {
+            initFirebase();
+        };
+
+        // Fallback: 如果沒有 Firebase 環境 (Local Demo)
+        function initLocalDemoMode() {
+            console.log("Running in Local Demo Mode");
+            categories = [...defaultCategories];
+            bookmarks = [
+                { docId: '1', title: '超夢幻！自製日系奶油霜杯子蛋糕', category: 'c2', tags: ['甜點', '食譜'], notes: '週末試作看看！比例要調整。', url: 'https://instagram.com' },
+                { docId: '2', title: '小坪數收納法則 5 選', category: 'c1', tags: ['收納', '無印風'], notes: '大創的收納盒超實用，買起來！' }
+            ];
+            renderCategoryNav();
+            renderCategoryDropdown();
+            renderCategoryEditList();
+            renderBookmarks();
+        }
+
+    </script>
+</body>
+</html>
