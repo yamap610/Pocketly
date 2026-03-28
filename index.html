@@ -54,7 +54,6 @@
             if (!code) return;
             const cleanCode = code.trim().toUpperCase();
             
-            // 介面切換
             document.getElementById('login-screen').classList.add('hidden');
             document.getElementById('main-content').classList.remove('hidden');
             document.getElementById('loading-overlay').classList.remove('hidden');
@@ -64,9 +63,7 @@
             document.getElementById('display-code').innerText = cleanCode;
 
             try {
-                // 匿名驗證
                 await signInAnonymously(auth);
-                // 開啟監聽
                 startSync(cleanCode);
             } catch (err) {
                 console.error("Login failed", err);
@@ -75,7 +72,6 @@
         };
 
         const startSync = (code) => {
-            // 監聽分類
             onSnapshot(doc(db, 'artifacts', appId, 'public', 'data', 'configs', code), (docSnap) => {
                 if (docSnap.exists()) {
                     window.appState.categories = docSnap.data().list;
@@ -83,10 +79,9 @@
                 } else {
                     saveConfigs(); 
                 }
-                updateStatusLight(true); // 成功接收到數據，亮綠燈
+                updateStatusLight(true);
             }, (err) => updateStatusLight(false));
 
-            // 監聽內容
             onSnapshot(collection(db, 'artifacts', appId, 'public', 'data', 'items_' + code), (snap) => {
                 window.appState.items = snap.docs.map(d => ({ id: d.id, ...d.data() }));
                 renderItems();
@@ -99,7 +94,6 @@
             location.reload();
         };
 
-        // --- 資料異動 ---
         const saveConfigs = async () => {
             if (!window.appState.boxCode) return;
             await setDoc(doc(db, 'artifacts', appId, 'public', 'data', 'configs', window.appState.boxCode), {
@@ -144,12 +138,11 @@
             };
         };
 
-        // --- UI 渲染 ---
         function renderTabs() {
             const container = document.getElementById('tabs-container');
             container.innerHTML = window.appState.categories.map(cat => `
                 <button onclick="window.setTab('${cat.id}')" 
-                    class="flex-shrink-0 px-5 py-2 rounded-full border transition-all text-sm ${window.appState.activeTab === cat.id ? 'bg-[#A67B5B] text-white border-[#A67B5B]' : 'bg-white text-[#6F4E37] border-[#D2B48C]'}">
+                    class="flex-shrink-0 px-5 py-2 rounded-full border transition-all text-sm whitespace-nowrap ${window.appState.activeTab === cat.id ? 'bg-[#A67B5B] text-white border-[#A67B5B]' : 'bg-white text-[#6F4E37] border-[#D2B48C]'}">
                     ${cat.emoji} ${cat.name}
                 </button>
             `).join('');
@@ -175,4 +168,173 @@
             container.innerHTML = filtered.sort((a,b)=>new Date(b.createdAt)-new Date(a.createdAt)).map(item => `
                 <div class="bg-white rounded-3xl p-5 border border-[#F5EBE0] shadow-sm relative group animate-fadeIn">
                     <button onclick="window.deleteItem('${item.id}')" class="absolute -top-1 -right-1 w-7 h-7 bg-white/90 border border-red-50 text-red-300 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity z-10">
-                        <i class="fas fa-times text-
+                        <i class="fas fa-times text-[10px]"></i>
+                    </button>
+                    <div class="mb-3">
+                        <span class="text-[10px] px-2 py-0.5 rounded-full bg-[#FAF7F2] text-[#A67B5B] border border-[#F5EBE0]">
+                            ${window.appState.categories.find(c => c.id === item.categoryId)?.emoji || '🔖'} 
+                            ${window.appState.categories.find(c => c.id === item.categoryId)?.name || '未分類'}
+                        </span>
+                    </div>
+                    <h3 class="font-bold text-[#4A3728] mb-2 leading-snug line-clamp-2 text-sm">${item.title}</h3>
+                    <p class="text-[11px] text-[#8B7355] line-clamp-2 mb-4 h-8">${item.note || '無備註內容'}</p>
+                    <a href="${item.url}" target="_blank" class="block w-full py-2 bg-[#FDFBF7] border border-[#F5EBE0] text-[#A67B5B] text-[11px] text-center rounded-xl active:bg-[#F5EBE0] transition-colors">
+                        <i class="fas fa-link mr-1 text-[10px]"></i> 開啟原文
+                    </a>
+                </div>
+            `).join('');
+        }
+
+        window.setTab = (id) => {
+            window.appState.activeTab = id;
+            renderTabs();
+            renderItems();
+        };
+
+        window.updateCat = (index, key, val) => {
+            window.appState.categories[index][key] = val;
+            saveConfigs();
+        };
+
+        window.addCat = () => {
+            window.appState.categories.push({ id: 'cat_' + Date.now(), name: '新分類', emoji: '📂' });
+            saveConfigs();
+        };
+
+        window.showModal = (id) => {
+            document.getElementById(id).classList.remove('hidden');
+            if(id === 'settings-modal') renderEditList();
+        }
+        window.hideModal = (id) => document.getElementById(id).classList.add('hidden');
+
+        function renderEditList() {
+            const list = document.getElementById('edit-list');
+            list.innerHTML = window.appState.categories.map((cat, i) => `
+                <div class="flex items-center space-x-2 bg-[#FAF7F2] p-2 rounded-xl border border-[#F5EBE0]">
+                    <input type="text" value="${cat.emoji}" onchange="window.updateCat(${i}, 'emoji', this.value)" class="w-8 text-center bg-transparent border-b border-[#D2B48C] outline-none">
+                    <input type="text" value="${cat.name}" onchange="window.updateCat(${i}, 'name', this.value)" class="flex-1 bg-transparent border-b border-[#D2B48C] text-sm outline-none">
+                </div>
+            `).join('');
+        }
+
+        window.onload = () => {
+            if (window.appState.boxCode) {
+                window.loginBox(window.appState.boxCode);
+            } else {
+                document.getElementById('login-screen').classList.remove('hidden');
+            }
+        };
+    </script>
+    <style>
+        body { background-color: #FDFBF7; color: #4A3728; font-family: -apple-system, sans-serif; -webkit-tap-highlight-color: transparent; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+        .animate-fadeIn { animation: fadeIn 0.3s ease-out forwards; }
+        .glass { background: rgba(253, 251, 247, 0.85); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+        input, select, textarea { font-size: 16px !important; }
+        #tabs-container { scroll-behavior: smooth; -webkit-overflow-scrolling: touch; }
+    </style>
+</head>
+<body class="pb-24">
+
+    <!-- 登入頁面 -->
+    <div id="login-screen" class="fixed inset-0 z-[100] bg-[#FDFBF7] flex items-center justify-center p-8 hidden">
+        <div class="w-full max-w-sm text-center">
+            <div class="text-6xl mb-6">📦</div>
+            <h1 class="text-2xl font-bold mb-2 text-[#4A3728]">M.Y 靈感收納箱</h1>
+            <p class="text-[#8B7355] text-sm mb-10 italic">跨裝置同步，留住妳的每個好點子</p>
+            <input id="box-input" type="text" placeholder="輸入收納箱號碼 (如: MYLOVE)" class="w-full px-6 py-4 bg-white border border-[#D2B48C] rounded-2xl text-center text-xl font-bold tracking-widest focus:outline-none mb-6 uppercase shadow-sm">
+            <button onclick="window.loginBox(document.getElementById('box-input').value)" class="w-full py-4 bg-[#A67B5B] text-white rounded-2xl font-bold shadow-lg shadow-[#A67B5B]/20 active:scale-95 transition-transform">
+                開啟同步空間
+            </button>
+        </div>
+    </div>
+
+    <!-- 主要內容 -->
+    <div id="main-content" class="hidden">
+        <header class="glass sticky top-0 z-40 border-b border-[#F5EBE0] px-4 py-4">
+            <div class="max-w-4xl mx-auto flex items-center justify-between">
+                <div>
+                    <h1 class="font-bold text-lg text-[#4A3728]">M.Y 靈感收納箱</h1>
+                    <div class="flex items-center space-x-2 mt-0.5">
+                        <div id="status-light" class="w-2 h-2 rounded-full bg-gray-300 transition-all duration-500"></div>
+                        <span id="status-text" class="text-[10px] text-gray-400 font-medium">同步中</span>
+                        <span class="text-[10px] text-gray-300">|</span>
+                        <div class="text-[10px] text-[#A67B5B] uppercase tracking-tighter">Box: <span id="display-code" class="font-mono font-bold">---</span></div>
+                    </div>
+                </div>
+                <div class="flex space-x-2">
+                    <button onclick="window.showModal('settings-modal')" class="w-9 h-9 rounded-full bg-white border border-[#F5EBE0] flex items-center justify-center text-[#A67B5B] shadow-sm"><i class="fas fa-cog text-sm"></i></button>
+                    <button onclick="window.logout()" class="w-9 h-9 rounded-full bg-white border border-[#F5EBE0] flex items-center justify-center text-red-200 shadow-sm"><i class="fas fa-sign-out-alt text-sm"></i></button>
+                </div>
+            </div>
+        </header>
+
+        <main class="max-w-4xl mx-auto px-4 py-6">
+            <!-- 修復後的橫向捲動容器 -->
+            <div id="tabs-container" class="flex flex-nowrap space-x-2 overflow-x-auto no-scrollbar pb-6 mb-4"></div>
+            
+            <div id="items-grid" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
+                <!-- 由 JS 渲染 -->
+            </div>
+        </main>
+    </div>
+
+    <!-- 載入層 -->
+    <div id="loading-overlay" class="fixed inset-0 z-[90] bg-[#FDFBF7]/90 flex flex-col items-center justify-center hidden">
+        <div class="animate-spin rounded-full h-8 w-8 border-4 border-[#A67B5B] border-t-transparent mb-4"></div>
+        <div class="text-[#A67B5B] text-xs font-medium">同步資料中...</div>
+    </div>
+
+    <!-- 新增按鈕 -->
+    <button onclick="window.showModal('add-modal')" class="fixed bottom-8 right-6 w-14 h-14 bg-[#A67B5B] text-white rounded-full shadow-xl flex items-center justify-center text-2xl z-50 active:scale-90 transition-transform">
+        <i class="fas fa-plus"></i>
+    </button>
+
+    <!-- Modal: 新增 -->
+    <div id="add-modal" class="fixed inset-0 z-[110] bg-black/40 hidden flex items-center justify-center p-4 backdrop-blur-sm">
+        <div class="bg-white w-full max-w-md rounded-3xl p-8 animate-fadeIn shadow-2xl">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="text-xl font-bold flex items-center text-[#4A3728]"><span class="mr-2 text-2xl">📝</span> 新增靈感</h2>
+                <button onclick="window.hideModal('add-modal')" class="text-gray-300"><i class="fas fa-times"></i></button>
+            </div>
+            <form onsubmit="window.addItem(event)" class="space-y-4">
+                <div class="space-y-1">
+                    <label class="text-[10px] font-bold text-[#A67B5B] ml-1">靈感標題</label>
+                    <input name="title" required placeholder="例如: 好看的親子餐廳" class="w-full p-3 bg-[#FAF7F2] rounded-xl border border-[#F5EBE0] outline-none text-sm focus:border-[#D2B48C] transition-colors">
+                </div>
+                <div class="space-y-1">
+                    <label class="text-[10px] font-bold text-[#A67B5B] ml-1">網址連結</label>
+                    <input name="url" required type="url" placeholder="https://..." class="w-full p-3 bg-[#FAF7F2] rounded-xl border border-[#F5EBE0] outline-none text-sm focus:border-[#D2B48C] transition-colors">
+                </div>
+                <div class="space-y-1">
+                    <label class="text-[10px] font-bold text-[#A67B5B] ml-1">分類</label>
+                    <select name="categoryId" class="w-full p-3 bg-[#FAF7F2] rounded-xl border border-[#F5EBE0] outline-none text-sm"></select>
+                </div>
+                <div class="space-y-1">
+                    <label class="text-[10px] font-bold text-[#A67B5B] ml-1">備註</label>
+                    <textarea name="note" placeholder="紀錄一下這份靈感的亮點..." rows="3" class="w-full p-3 bg-[#FAF7F2] rounded-xl border border-[#F5EBE0] outline-none text-sm focus:border-[#D2B48C] transition-colors"></textarea>
+                </div>
+                <div class="pt-4">
+                    <button type="submit" class="w-full py-4 bg-[#A67B5B] text-white rounded-2xl font-bold shadow-lg shadow-[#A67B5B]/20 active:opacity-80 transition-all">
+                        存入收納箱
+                    </button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Modal: 設定 -->
+    <div id="settings-modal" class="fixed inset-0 z-[110] bg-black/40 hidden flex items-center justify-center p-4 backdrop-blur-sm">
+        <div class="bg-white w-full max-w-md rounded-3xl p-8 animate-fadeIn shadow-2xl">
+            <div class="flex justify-between items-center mb-6">
+                <h2 class="font-bold text-[#4A3728]">分類管理</h2>
+                <button onclick="window.addCat()" class="text-xs text-[#A67B5B] font-bold px-3 py-1 bg-[#FAF7F2] rounded-full">+ 新增</button>
+            </div>
+            <div id="edit-list" class="space-y-3 mb-8 max-h-60 overflow-y-auto pr-1 no-scrollbar"></div>
+            <button onclick="window.hideModal('settings-modal')" class="w-full py-4 bg-[#A67B5B] text-white rounded-xl font-bold shadow-md">完成設定</button>
+        </div>
+    </div>
+
+</body>
+</html>
